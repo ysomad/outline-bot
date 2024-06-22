@@ -81,7 +81,7 @@ func main() {
 
 	telebot, err := tele.NewBot(tele.Settings{
 		Token: conf.TGToken,
-		OnError: func(err error, ctx tele.Context) {
+		OnError: func(err error, c tele.Context) {
 			slog.Error(fmt.Sprintf("unhandled error: %s", err.Error()))
 		},
 		Client: httpCli,

@@ -2,8 +2,8 @@ package bot
 
 import (
 	"fmt"
-	"io"
 	"strconv"
+	"strings"
 
 	"gopkg.in/telebot.v3"
 )
@@ -41,15 +41,15 @@ func (u user) Recipient() string {
 	return u.ID()
 }
 
-func (u user) Write(w io.Writer) {
-	fmt.Fprintf(w, "ID: %d", u.id)
+func (u user) write(sb *strings.Builder) {
+	fmt.Fprintf(sb, "ID: %d", u.id)
 	if u.username != "" {
-		fmt.Fprintf(w, "\nЛогин: @%s", u.username)
+		fmt.Fprintf(sb, "\nЛогин: @%s", u.username)
 	}
 	if u.firstName != "" {
-		fmt.Fprintf(w, "\nИмя: %s", u.firstName)
+		fmt.Fprintf(sb, "\nИмя: %s", u.firstName)
 	}
 	if u.lastName != "" {
-		fmt.Fprintf(w, "\nФамилия: %s", u.lastName)
+		fmt.Fprintf(sb, "\nФамилия: %s", u.lastName)
 	}
 }

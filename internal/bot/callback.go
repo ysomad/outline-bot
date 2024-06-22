@@ -146,7 +146,7 @@ func (b *Bot) handleCallback(c tele.Context) error {
 		adminSB.Grow(5)
 		adminSB.WriteString(usrSB.String())
 		adminSB.WriteString("\n")
-		usr.Write(adminSB)
+		usr.write(adminSB)
 
 		if err := c.Edit(adminSB.String(), "", tele.ModeMarkdown); err != nil {
 			return fmt.Errorf("order approve msg not sent to admin: %w", err)
@@ -196,6 +196,6 @@ func orderCreatedMsg(oid domain.OrderID, price, keys int, usr user) string {
 	sb := &strings.Builder{}
 	sb.Grow(4)
 	fmt.Fprintf(sb, "Новый заказ №%d\n\nК оплате: %d₽\nКлючей: %d\n\n", oid, price, keys)
-	usr.Write(sb)
+	usr.write(sb)
 	return sb.String()
 }
