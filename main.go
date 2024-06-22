@@ -16,8 +16,8 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	tele "gopkg.in/telebot.v3"
 
-	"github.com/ysomad/outline-bot/config"
 	"github.com/ysomad/outline-bot/internal/bot"
+	"github.com/ysomad/outline-bot/internal/config"
 	"github.com/ysomad/outline-bot/internal/outline"
 	"github.com/ysomad/outline-bot/internal/sqlite"
 )
