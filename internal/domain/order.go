@@ -1,0 +1,24 @@
+package domain
+
+import "strconv"
+
+type OrderID int32
+
+func (id OrderID) String() string {
+	return strconv.Itoa(int(id))
+}
+
+func OrderIDFromString(s string) (OrderID, error) {
+	i, err := strconv.Atoi(s)
+	if err != nil {
+		return 0, err
+	}
+	return OrderID(i), nil
+}
+
+type OrderStatus string
+
+const (
+	OrderStatusRejected OrderStatus = "rejected"
+	OrderStatusApproved OrderStatus = "approved"
+)
