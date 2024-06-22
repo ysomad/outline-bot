@@ -7,8 +7,8 @@ import (
 	tele "gopkg.in/telebot.v3"
 	"gopkg.in/telebot.v3/middleware"
 
+	"github.com/ysomad/outline-bot/internal/outline"
 	"github.com/ysomad/outline-bot/internal/sqlite"
-	"github.com/ysomad/outline-bot/outline"
 )
 
 const (

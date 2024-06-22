@@ -18,8 +18,8 @@ import (
 
 	"github.com/ysomad/outline-bot/config"
 	"github.com/ysomad/outline-bot/internal/bot"
+	"github.com/ysomad/outline-bot/internal/outline"
 	"github.com/ysomad/outline-bot/internal/sqlite"
-	"github.com/ysomad/outline-bot/outline"
 )
 
 func slogFatal(msg string, args ...any) {

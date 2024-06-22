@@ -13,8 +13,8 @@ import (
 	tele "gopkg.in/telebot.v3"
 
 	"github.com/ysomad/outline-bot/internal/domain"
+	"github.com/ysomad/outline-bot/internal/outline"
 	"github.com/ysomad/outline-bot/internal/sqlite"
-	"github.com/ysomad/outline-bot/outline"
 )
 
 type btnCallback struct {
