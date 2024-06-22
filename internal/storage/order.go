@@ -1,4 +1,4 @@
-package sqlite
+package storage
 
 import (
 	"context"
@@ -11,9 +11,16 @@ import (
 	"github.com/ysomad/outline-bot/internal/domain"
 )
 
-type OrderDB struct {
+type Storage struct {
 	*sql.DB
-	Builder sq.StatementBuilderType
+	builder sq.StatementBuilderType
+}
+
+func New(db *sql.DB, b sq.StatementBuilderType) *Storage {
+	return &Storage{
+		DB:      db,
+		builder: b,
+	}
 }
 
 type Order struct {
@@ -29,8 +36,8 @@ type Order struct {
 	CreatedAt sql.NullTime
 }
 
-func (db *OrderDB) Get(oid domain.OrderID) (Order, error) {
-	sql, args, err := db.Builder.
+func (s *Storage) GetOrder(oid domain.OrderID) (Order, error) {
+	sql, args, err := s.builder.
 		Select("id, uid, username, first_name, last_name, key_amount, price, status, closed_at, created_at").
 		From("orders").
 		Where(sq.Eq{"id": oid}).
@@ -39,7 +46,7 @@ func (db *OrderDB) Get(oid domain.OrderID) (Order, error) {
 		return Order{}, err
 	}
 
-	row := db.QueryRow(sql, args...)
+	row := s.QueryRow(sql, args...)
 	o := Order{}
 	err = row.Scan(
 		&o.ID,
@@ -70,8 +77,8 @@ type CreateOrderParams struct {
 	CreatedAt time.Time
 }
 
-func (db *OrderDB) Create(p CreateOrderParams) (domain.OrderID, error) {
-	sql, args, err := db.Builder.
+func (s *Storage) CreateOrder(p CreateOrderParams) (domain.OrderID, error) {
+	sql, args, err := s.builder.
 		Insert("orders").
 		Columns("uid, username, first_name, last_name, key_amount, price, created_at").
 		Values(p.UID, p.Username, p.FirstName, p.LastName, p.KeyAmount, p.Price, p.CreatedAt).
@@ -80,7 +87,7 @@ func (db *OrderDB) Create(p CreateOrderParams) (domain.OrderID, error) {
 		return 0, err
 	}
 
-	res, err := db.Exec(sql, args...)
+	res, err := s.Exec(sql, args...)
 	if err != nil {
 		return 0, fmt.Errorf("exec: %w", err)
 	}
@@ -93,8 +100,8 @@ func (db *OrderDB) Create(p CreateOrderParams) (domain.OrderID, error) {
 	return domain.OrderID(id), nil
 }
 
-func (db *OrderDB) Reject(oid domain.OrderID, rejectedAt time.Time) error {
-	if _, err := db.Exec("UPDATE orders SET closed_at = ?, status = ? WHERE id = ?", rejectedAt, domain.OrderStatusRejected, oid); err != nil {
+func (db *Storage) Close(oid domain.OrderID, s domain.OrderStatus, closedAt time.Time) error {
+	if _, err := db.Exec("UPDATE orders SET closed_at = ?, status = ? WHERE id = ?", closedAt, s, oid); err != nil {
 		return err
 	}
 	return nil
@@ -107,8 +114,8 @@ type AccessKey struct {
 	ExpiresAt time.Time
 }
 
-func (db *OrderDB) Approve(oid domain.OrderID, keys []AccessKey, approvedAt time.Time) error {
-	sql1, args1, err := db.Builder.
+func (s *Storage) ApproveOrder(oid domain.OrderID, keys []AccessKey, approvedAt time.Time) error {
+	sql1, args1, err := s.builder.
 		Update("orders").
 		Set("closed_at", approvedAt).
 		Set("status", domain.OrderStatusApproved).
@@ -118,7 +125,7 @@ func (db *OrderDB) Approve(oid domain.OrderID, keys []AccessKey, approvedAt time
 		return err
 	}
 
-	b := db.Builder.
+	b := s.builder.
 		Insert("access_keys").
 		Columns("id, name, url, order_id, expires_at")
 
@@ -131,7 +138,7 @@ func (db *OrderDB) Approve(oid domain.OrderID, keys []AccessKey, approvedAt time
 		return err
 	}
 
-	tx, err := db.BeginTx(context.TODO(), nil)
+	tx, err := s.BeginTx(context.TODO(), nil)
 	if err != nil {
 		return fmt.Errorf("tx not started: %w", err)
 	}

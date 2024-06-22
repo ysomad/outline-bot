@@ -8,7 +8,7 @@ import (
 	"gopkg.in/telebot.v3/middleware"
 
 	"github.com/ysomad/outline-bot/internal/outline"
-	"github.com/ysomad/outline-bot/internal/sqlite"
+	"github.com/ysomad/outline-bot/internal/storage"
 )
 
 const (
@@ -21,10 +21,10 @@ type Bot struct {
 	adminID int64
 	state   *expirable.LRU[string, State]
 	outline *outline.Client
-	order   sqlite.OrderDB
+	storage *storage.Storage
 }
 
-func New(telebot *tele.Bot, adminID int64, state *expirable.LRU[string, State], outline *outline.Client, order sqlite.OrderDB) (*Bot, error) {
+func New(telebot *tele.Bot, adminID int64, state *expirable.LRU[string, State], outline *outline.Client, st *storage.Storage) (*Bot, error) {
 	if err := telebot.SetCommands([]tele.Command{
 		{
 			Text:        "order",
@@ -43,7 +43,7 @@ func New(telebot *tele.Bot, adminID int64, state *expirable.LRU[string, State], 
 	bot := &Bot{
 		Bot:     telebot,
 		adminID: adminID,
-		order:   order,
+		storage: st,
 		outline: outline,
 		state:   state,
 	}

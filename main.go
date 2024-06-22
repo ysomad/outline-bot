@@ -19,7 +19,7 @@ import (
 	"github.com/ysomad/outline-bot/internal/bot"
 	"github.com/ysomad/outline-bot/internal/config"
 	"github.com/ysomad/outline-bot/internal/outline"
-	"github.com/ysomad/outline-bot/internal/sqlite"
+	"github.com/ysomad/outline-bot/internal/storage"
 )
 
 func slogFatal(msg string, args ...any) {
@@ -72,10 +72,7 @@ func main() {
 	}
 
 	stateLRU := expirable.NewLRU[string, bot.State](100, nil, time.Hour*24)
-	orderDB := sqlite.OrderDB{
-		DB:      db,
-		Builder: sq.StatementBuilder.PlaceholderFormat(sq.Question),
-	}
+	storage := storage.New(db, sq.StatementBuilder.PlaceholderFormat(sq.Question))
 
 	outlineCli, err := outline.NewClient(conf.OutlineURL, outline.WithClient(httpCli))
 	if err != nil {
@@ -94,7 +91,7 @@ func main() {
 		slogFatal(fmt.Sprintf("telebot not created: %s", err.Error()))
 	}
 
-	bot, err := bot.New(telebot, conf.TGAdmin, stateLRU, outlineCli, orderDB)
+	bot, err := bot.New(telebot, conf.TGAdmin, stateLRU, outlineCli, storage)
 	if err != nil {
 		slogFatal(fmt.Sprintf("bot not initialized: %s", err.Error()))
 	}

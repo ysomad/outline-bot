@@ -14,7 +14,7 @@ import (
 
 	"github.com/ysomad/outline-bot/internal/domain"
 	"github.com/ysomad/outline-bot/internal/outline"
-	"github.com/ysomad/outline-bot/internal/sqlite"
+	"github.com/ysomad/outline-bot/internal/storage"
 )
 
 type btnCallback struct {
@@ -62,7 +62,7 @@ func (b *Bot) handleCallback(c tele.Context) error {
 
 		price := keyAmount * domain.PricePerKey
 
-		orderID, err := b.order.Create(sqlite.CreateOrderParams{
+		orderID, err := b.storage.CreateOrder(storage.CreateOrderParams{
 			UID:       usr.id,
 			Username:  usr.username,
 			FirstName: usr.firstName,
@@ -100,12 +100,12 @@ func (b *Bot) handleCallback(c tele.Context) error {
 			return err
 		}
 
-		order, err := b.order.Get(orderID)
+		order, err := b.storage.GetOrder(orderID)
 		if err != nil {
 			return err
 		}
 
-		keys := make([]sqlite.AccessKey, order.KeyAmount)
+		keys := make([]storage.AccessKey, order.KeyAmount)
 		gen := namegenerator.NewNameGenerator(now.UnixNano())
 		exp := now.Add(domain.KeyTTL)
 
@@ -130,7 +130,7 @@ func (b *Bot) handleCallback(c tele.Context) error {
 				return err
 			}
 
-			keys[i] = sqlite.AccessKey{
+			keys[i] = storage.AccessKey{
 				ID:        key.ID,
 				Name:      key.Name.Value,
 				URL:       key.AccessUrl.Value,
@@ -138,7 +138,7 @@ func (b *Bot) handleCallback(c tele.Context) error {
 			}
 		}
 
-		if err := b.order.Approve(order.ID, keys, now); err != nil {
+		if err := b.storage.ApproveOrder(order.ID, keys, now); err != nil {
 			return fmt.Errorf("order not approved: %w", err)
 		}
 
@@ -162,12 +162,12 @@ func (b *Bot) handleCallback(c tele.Context) error {
 			return err
 		}
 
-		order, err := b.order.Get(orderID)
+		order, err := b.storage.GetOrder(orderID)
 		if err != nil {
 			return err
 		}
 
-		if err := b.order.Reject(orderID, now); err != nil {
+		if err := b.storage.Close(orderID, domain.OrderStatusRejected, now); err != nil {
 			return fmt.Errorf("order not rejected: %w", err)
 		}
 
