@@ -143,9 +143,10 @@ func (b *Bot) handleCallback(c tele.Context) error {
 		}
 
 		adminSB := &strings.Builder{}
-		adminSB.Grow(4)
+		adminSB.Grow(5)
 		adminSB.WriteString(usrSB.String())
-		writeUser(adminSB, usr)
+		adminSB.WriteString("\n")
+		usr.Write(adminSB)
 
 		if err := c.Edit(adminSB.String(), "", tele.ModeMarkdown); err != nil {
 			return fmt.Errorf("order approve msg not sent to admin: %w", err)
@@ -194,20 +195,7 @@ func (b *Bot) handleCallback(c tele.Context) error {
 func orderCreatedMsg(oid domain.OrderID, price, keys int, usr user) string {
 	sb := &strings.Builder{}
 	sb.Grow(4)
-	fmt.Fprintf(sb, "Новый заказ №%d\n\nК оплате: %d₽\nКлючей: %d\n", oid, price, keys)
-	writeUser(sb, usr)
+	fmt.Fprintf(sb, "Новый заказ №%d\n\nК оплате: %d₽\nКлючей: %d\n\n", oid, price, keys)
+	usr.Write(sb)
 	return sb.String()
-}
-
-func writeUser(sb *strings.Builder, u user) {
-	fmt.Fprintf(sb, "\nID: %d", u.id)
-	if u.username != "" {
-		fmt.Fprintf(sb, "\nЛогин: @%s", u.username)
-	}
-	if u.firstName != "" {
-		fmt.Fprintf(sb, "\nИмя: %s", u.firstName)
-	}
-	if u.lastName != "" {
-		fmt.Fprintf(sb, "\nФамилия: %s", u.lastName)
-	}
 }
