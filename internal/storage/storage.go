@@ -75,13 +75,14 @@ type CreateOrderParams struct {
 	KeyAmount int
 	Price     int
 	CreatedAt time.Time
+	Status    domain.OrderStatus
 }
 
 func (s *Storage) CreateOrder(p CreateOrderParams) (domain.OrderID, error) {
 	sql, args, err := s.builder.
 		Insert("orders").
-		Columns("uid, username, first_name, last_name, key_amount, price, created_at").
-		Values(p.UID, p.Username, p.FirstName, p.LastName, p.KeyAmount, p.Price, p.CreatedAt).
+		Columns("uid, username, first_name, last_name, key_amount, price, created_at, status").
+		Values(p.UID, p.Username, p.FirstName, p.LastName, p.KeyAmount, p.Price, p.CreatedAt, p.Status).
 		ToSql()
 	if err != nil {
 		return 0, err

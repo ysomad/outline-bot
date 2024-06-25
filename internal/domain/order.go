@@ -19,6 +19,7 @@ func OrderIDFromString(s string) (OrderID, error) {
 type OrderStatus string
 
 const (
-	OrderStatusRejected OrderStatus = "rejected"
-	OrderStatusApproved OrderStatus = "approved"
+	OrderStatusAwaitingPayment OrderStatus = "awaiting payment"
+	OrderStatusRejected        OrderStatus = "rejected"
+	OrderStatusApproved        OrderStatus = "approved"
 )

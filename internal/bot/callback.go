@@ -63,6 +63,7 @@ func (b *Bot) handleCallback(c tele.Context) error {
 		price := keyAmount * domain.PricePerKey
 
 		orderID, err := b.storage.CreateOrder(storage.CreateOrderParams{
+			Status:    domain.OrderStatusAwaitingPayment,
 			UID:       usr.id,
 			Username:  usr.username,
 			FirstName: usr.firstName,

@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS orders (
     key_amount smallint NOT NULL,
     price int NOT NULL,
 
-    status varchar(32),
+    status varchar(32) NOT NULL,
 
     closed_at timestamp,
     created_at timestamp NOT NULL
