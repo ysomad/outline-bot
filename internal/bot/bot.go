@@ -32,7 +32,7 @@ func New(telebot *tele.Bot, adminID int64, state *expirable.LRU[string, State], 
 		},
 		{
 			Text:        "profile",
-			Description: "Инфо о подписке",
+			Description: "Узнать статус подписки",
 		},
 	}); err != nil {
 		return nil, fmt.Errorf("commands not set: %w", err)
@@ -48,6 +48,7 @@ func New(telebot *tele.Bot, adminID int64, state *expirable.LRU[string, State], 
 		state:   state,
 	}
 
+	telebot.Handle("/start", bot.handleStart)
 	telebot.Handle("/order", bot.handleOrder)
 	telebot.Handle("/profile", bot.handleProfile)
 	telebot.Handle(tele.OnCallback, bot.handleCallback)
@@ -80,6 +81,11 @@ func (b *Bot) handleOrder(c tele.Context) error {
 	)
 
 	return c.Send("Сколько ключей доступа к ВПНу хочешь?", kb)
+}
+
+func (b *Bot) handleStart(c tele.Context) error {
+	msg := "Это бот для доступа к ВПНу ДЛЯ СВОИХ \n\n/order - разместить заказ на доступ к ВПНу\n/profile - статус подписки"
+	return c.Send(msg)
 }
 
 func (b *Bot) handleProfile(c tele.Context) error {
