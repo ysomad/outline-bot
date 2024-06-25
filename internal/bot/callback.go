@@ -96,68 +96,7 @@ func (b *Bot) handleCallback(c tele.Context) error {
 
 		return c.Send(qr, usrKb)
 	case stepApproveOrder:
-		orderID, err := domain.OrderIDFromString(cb.data)
-		if err != nil {
-			return err
-		}
-
-		order, err := b.storage.GetOrder(orderID)
-		if err != nil {
-			return err
-		}
-
-		keys := make([]storage.AccessKey, order.KeyAmount)
-		gen := namegenerator.NewNameGenerator(now.UnixNano())
-		exp := now.Add(domain.KeyTTL)
-
-		usrSB := &strings.Builder{}
-		usrSB.Grow(len(keys) + 1)
-		fmt.Fprintf(usrSB, "Заказ №%d одобрен (до %s)\n", order.ID, exp.Format("02.01.2006"))
-
-		for i := range order.KeyAmount {
-			keyName := gen.Generate()
-
-			slog.Debug("creating new key", "name", keyName)
-
-			key, err := b.outline.AccessKeysPost(context.TODO(), outline.NewOptAccessKeysPostReq(outline.AccessKeysPostReq{
-				Name: outline.NewOptString(keyName),
-			}))
-			if err != nil {
-				return fmt.Errorf("key not created: %w", err)
-			}
-
-			_, err = fmt.Fprintf(usrSB, "\n%s %s\n```\n%s\n```", key.ID, key.Name.Value, key.AccessUrl.Value)
-			if err != nil {
-				return err
-			}
-
-			keys[i] = storage.AccessKey{
-				ID:        key.ID,
-				Name:      key.Name.Value,
-				URL:       key.AccessUrl.Value,
-				ExpiresAt: exp,
-			}
-		}
-
-		if err := b.storage.ApproveOrder(order.ID, keys, now); err != nil {
-			return fmt.Errorf("order not approved: %w", err)
-		}
-
-		adminSB := &strings.Builder{}
-		adminSB.Grow(5)
-		adminSB.WriteString(usrSB.String())
-		adminSB.WriteString("\n")
-		usr.write(adminSB)
-
-		if err := c.Edit(adminSB.String(), "", tele.ModeMarkdown); err != nil {
-			return fmt.Errorf("order approve msg not sent to admin: %w", err)
-		}
-
-		if _, err := b.Send(recipient(order.UID), usrSB.String(), tele.ModeMarkdown); err != nil {
-			return fmt.Errorf("keys not sent to user: %w", err)
-		}
-
-		return nil
+		return b.approveOrder(c, cb)
 	case stepRejectOrder:
 		orderID, err := domain.OrderIDFromString(cb.data)
 		if err != nil {
@@ -188,6 +127,83 @@ func (b *Bot) handleCallback(c tele.Context) error {
 		b.state.Remove(usr.ID())
 
 		return c.Send("Операция отменена")
+	}
+
+	return nil
+}
+
+// aproveOrder closes order and creates access keys to outline, sends them to user and admin.
+func (b *Bot) approveOrder(c tele.Context, cb btnCallback) error {
+	orderID, err := domain.OrderIDFromString(cb.data)
+	if err != nil {
+		return err
+	}
+
+	order, err := b.storage.GetOrder(orderID)
+	if err != nil {
+		return err
+	}
+
+	keys := make([]storage.AccessKey, order.KeyAmount)
+	now := time.Now()
+	gen := namegenerator.NewNameGenerator(now.UnixNano())
+	exp := now.Add(domain.KeyTTL)
+
+	usrSB := &strings.Builder{}
+	usrSB.Grow(len(keys) + 1)
+	fmt.Fprintf(usrSB, "Заказ №%d одобрен (до %s)\n", order.ID, exp.Format("02.01.2006"))
+
+	for i := range order.KeyAmount {
+		keyName := gen.Generate()
+
+		slog.Debug("creating new key", "name", keyName)
+
+		key, err := b.outline.AccessKeysPost(context.TODO(), outline.NewOptAccessKeysPostReq(outline.AccessKeysPostReq{
+			Name: outline.NewOptString(keyName),
+		}))
+		if err != nil {
+			return fmt.Errorf("key not created: %w", err)
+		}
+
+		_, err = fmt.Fprintf(usrSB, "\n%s %s\n```\n%s\n```", key.ID, key.Name.Value, key.AccessUrl.Value)
+		if err != nil {
+			return err
+		}
+
+		keys[i] = storage.AccessKey{
+			ID:        key.ID,
+			Name:      key.Name.Value,
+			URL:       key.AccessUrl.Value,
+			ExpiresAt: exp,
+		}
+	}
+
+	if err := b.storage.ApproveOrder(order.ID, keys, now); err != nil {
+		return fmt.Errorf("order not approved: %w", err)
+	}
+
+	userMsg := usrSB.String()
+
+	// to write user from order to msg
+	usr := user{
+		id:        order.UID,
+		username:  order.Username.String,
+		firstName: order.FirstName.String,
+		lastName:  order.LastName.String,
+	}
+
+	adminSB := &strings.Builder{}
+	adminSB.Grow(5)
+	adminSB.WriteString(userMsg)
+	adminSB.WriteString("\n")
+	usr.write(adminSB)
+
+	if err := c.Edit(adminSB.String(), "", tele.ModeMarkdown); err != nil {
+		return fmt.Errorf("order approve msg not sent to admin: %w", err)
+	}
+
+	if _, err := b.Send(recipient(order.UID), userMsg, tele.ModeMarkdown); err != nil {
+		return fmt.Errorf("keys not sent to user: %w", err)
 	}
 
 	return nil
