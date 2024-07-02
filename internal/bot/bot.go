@@ -92,8 +92,7 @@ func (b *Bot) handleOrder(c tele.Context) error {
 	}
 
 	step := stepSelectKeyAmount.String()
-
-	defer b.state.Add(usr.ID(), State{step: step})
+	b.state.Add(usr.ID(), State{step: step})
 
 	kb := &tele.ReplyMarkup{}
 	kb.Inline(
