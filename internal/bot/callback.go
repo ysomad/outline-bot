@@ -45,7 +45,7 @@ func (b *Bot) handleCallback(c tele.Context) error {
 		return err
 	}
 
-	now := time.Now().UTC()
+	now := time.Now()
 
 	slog.Info("callback received", "unique", cb.unique, "data", cb.data, "callback_id", telecb.ID)
 
@@ -82,7 +82,7 @@ func (b *Bot) handleCallback(c tele.Context) error {
 			adminKb.Row(adminKb.Data("Отклонить", stepRejectOrder.String(), orderID.String())),
 		)
 
-		if _, err = b.Send(recipient(b.adminID), orderCreatedMsg(orderID, price, keyAmount, usr), adminKb); err != nil {
+		if _, err = b.tele.Send(recipient(b.adminID), orderCreatedMsg(orderID, price, keyAmount, usr), adminKb); err != nil {
 			return fmt.Errorf("order not sent to admin: %w", err)
 		}
 
@@ -114,7 +114,7 @@ func (b *Bot) handleCallback(c tele.Context) error {
 
 		slog.Info("order rejected", "order", order)
 
-		if _, err := b.Send(recipient(order.UID), fmt.Sprintf("Заказ №%d отклонен администратором", orderID)); err != nil {
+		if _, err := b.tele.Send(recipient(order.UID), fmt.Sprintf("Заказ №%d отклонен администратором", orderID)); err != nil {
 			return fmt.Errorf("reject msg not sent to user: %w", err)
 		}
 
@@ -144,7 +144,7 @@ func (b *Bot) approveOrder(c tele.Context, cb btnCallback) error {
 		return err
 	}
 
-	keys := make([]storage.AccessKey, order.KeyAmount)
+	keys := make([]storage.Key, order.KeyAmount)
 	now := time.Now()
 	gen := namegenerator.NewNameGenerator(now.UnixNano())
 	exp := now.Add(domain.KeyTTL)
@@ -170,7 +170,7 @@ func (b *Bot) approveOrder(c tele.Context, cb btnCallback) error {
 			return err
 		}
 
-		keys[i] = storage.AccessKey{
+		keys[i] = storage.Key{
 			ID:        key.ID,
 			Name:      key.Name.Value,
 			URL:       key.AccessUrl.Value,
@@ -202,7 +202,7 @@ func (b *Bot) approveOrder(c tele.Context, cb btnCallback) error {
 		return fmt.Errorf("order approve msg not sent to admin: %w", err)
 	}
 
-	if _, err := b.Send(recipient(order.UID), userMsg, tele.ModeMarkdown); err != nil {
+	if _, err := b.tele.Send(recipient(order.UID), userMsg, tele.ModeMarkdown); err != nil {
 		return fmt.Errorf("keys not sent to user: %w", err)
 	}
 

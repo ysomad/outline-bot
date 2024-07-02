@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
@@ -12,14 +13,14 @@ import (
 )
 
 type Storage struct {
-	*sql.DB
-	builder sq.StatementBuilderType
+	db *sql.DB
+	sq sq.StatementBuilderType
 }
 
 func New(db *sql.DB, b sq.StatementBuilderType) *Storage {
 	return &Storage{
-		DB:      db,
-		builder: b,
+		db: db,
+		sq: b,
 	}
 }
 
@@ -37,7 +38,7 @@ type Order struct {
 }
 
 func (s *Storage) GetOrder(oid domain.OrderID) (Order, error) {
-	sql, args, err := s.builder.
+	sql, args, err := s.sq.
 		Select("id, uid, username, first_name, last_name, key_amount, price, status, closed_at, created_at").
 		From("orders").
 		Where(sq.Eq{"id": oid}).
@@ -46,7 +47,7 @@ func (s *Storage) GetOrder(oid domain.OrderID) (Order, error) {
 		return Order{}, err
 	}
 
-	row := s.QueryRow(sql, args...)
+	row := s.db.QueryRow(sql, args...)
 	o := Order{}
 	err = row.Scan(
 		&o.ID,
@@ -79,7 +80,7 @@ type CreateOrderParams struct {
 }
 
 func (s *Storage) CreateOrder(p CreateOrderParams) (domain.OrderID, error) {
-	sql, args, err := s.builder.
+	sql, args, err := s.sq.
 		Insert("orders").
 		Columns("uid, username, first_name, last_name, key_amount, price, created_at, status").
 		Values(p.UID, p.Username, p.FirstName, p.LastName, p.KeyAmount, p.Price, p.CreatedAt, p.Status).
@@ -88,7 +89,7 @@ func (s *Storage) CreateOrder(p CreateOrderParams) (domain.OrderID, error) {
 		return 0, err
 	}
 
-	res, err := s.Exec(sql, args...)
+	res, err := s.db.Exec(sql, args...)
 	if err != nil {
 		return 0, fmt.Errorf("exec: %w", err)
 	}
@@ -101,24 +102,25 @@ func (s *Storage) CreateOrder(p CreateOrderParams) (domain.OrderID, error) {
 	return domain.OrderID(id), nil
 }
 
-func (db *Storage) Close(oid domain.OrderID, s domain.OrderStatus, closedAt time.Time) error {
-	if _, err := db.Exec("UPDATE orders SET closed_at = ?, status = ? WHERE id = ?", closedAt, s, oid); err != nil {
+func (s *Storage) Close(oid domain.OrderID, status domain.OrderStatus, closedAt time.Time) error {
+	if _, err := s.db.Exec("UPDATE orders SET closed_at = ?, status = ? WHERE id = ?",
+		closedAt.UTC(), status, oid); err != nil {
 		return err
 	}
 	return nil
 }
 
-type AccessKey struct {
+type Key struct {
 	ID        string
 	Name      string
 	URL       string
 	ExpiresAt time.Time
 }
 
-func (s *Storage) ApproveOrder(oid domain.OrderID, keys []AccessKey, approvedAt time.Time) error {
-	sql1, args1, err := s.builder.
+func (s *Storage) ApproveOrder(oid domain.OrderID, keys []Key, approvedAt time.Time) error {
+	sql1, args1, err := s.sq.
 		Update("orders").
-		Set("closed_at", approvedAt).
+		Set("closed_at", approvedAt.UTC()).
 		Set("status", domain.OrderStatusApproved).
 		Where(sq.Eq{"id": oid}).
 		ToSql()
@@ -126,7 +128,7 @@ func (s *Storage) ApproveOrder(oid domain.OrderID, keys []AccessKey, approvedAt 
 		return err
 	}
 
-	b := s.builder.
+	b := s.sq.
 		Insert("access_keys").
 		Columns("id, name, url, order_id, expires_at")
 
@@ -139,7 +141,7 @@ func (s *Storage) ApproveOrder(oid domain.OrderID, keys []AccessKey, approvedAt 
 		return err
 	}
 
-	tx, err := s.BeginTx(context.TODO(), nil)
+	tx, err := s.db.BeginTx(context.TODO(), nil)
 	if err != nil {
 		return fmt.Errorf("tx not started: %w", err)
 	}
@@ -158,4 +160,76 @@ func (s *Storage) ApproveOrder(oid domain.OrderID, keys []AccessKey, approvedAt 
 	}
 
 	return nil
+}
+
+type KeyFromOrder struct {
+	ID        string
+	Name      string
+	URL       string
+	ExpiresAt time.Time
+	OrderID   domain.OrderID
+	Price     int
+}
+
+func (s *Storage) ListActiveUserKeys(uid int64) ([]KeyFromOrder, error) {
+	sql, args, err := s.sq.
+		Select("ak.id, ak.url, ak.expires_at, ak.name, o.id, o.price").
+		From("access_keys ak").
+		InnerJoin("orders o ON ak.order_id = o.id").
+		Where(sq.Eq{"o.uid": uid}).
+		Where(sq.Lt{"ak.expires_at": "current_timestamp"}).
+		OrderBy("o.id").
+		ToSql()
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := s.db.Query(sql, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query: %w", err)
+	}
+	defer rows.Close()
+
+	var keys []KeyFromOrder
+
+	for rows.Next() {
+		k := KeyFromOrder{}
+
+		if err := rows.Scan(&k.ID, &k.URL, &k.ExpiresAt, &k.Name, &k.OrderID, &k.Price); err != nil {
+			return nil, err
+		}
+
+		keys = append(keys, k)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows: %w", err)
+	}
+
+	return keys, nil
+}
+
+func (s *Storage) CountActiveKeys(uid int64) (uint8, error) {
+	sql, args, err := s.sq.
+		Select("count(*)").
+		From("access_keys ak").
+		InnerJoin("orders o on o.id = ak.order_id").
+		Where(sq.Eq{"o.uid": uid}).
+		Where("ak.expires_at > current_timestamp").
+		ToSql()
+	if err != nil {
+		return 0, err
+	}
+
+	slog.Debug(sql)
+
+	row := s.db.QueryRow(sql, args...)
+
+	var count uint8
+
+	if err := row.Scan(&count); err != nil {
+		return 0, fmt.Errorf("scan: %w", err)
+	}
+
+	return count, nil
 }

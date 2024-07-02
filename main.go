@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"database/sql"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
@@ -56,7 +59,7 @@ func main() {
 	slog.Debug("loaded config", "config", conf)
 
 	httpCli := &http.Client{
-		Timeout: time.Second, // TODO: move to config
+		Timeout: time.Second * 5, // TODO: move to config
 
 		// disable security since my vpn is not behind any domain
 		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
@@ -84,8 +87,9 @@ func main() {
 		OnError: func(err error, c tele.Context) {
 			slog.Error(fmt.Sprintf("unhandled error: %s", err.Error()))
 		},
-		Client: httpCli,
-		Poller: &tele.LongPoller{Timeout: time.Second * 10}, // TODO: move to config
+		Client:  httpCli,
+		Poller:  &tele.LongPoller{Timeout: time.Second * 3}, // TODO: move to config
+		Verbose: false,
 	})
 	if err != nil {
 		slogFatal(fmt.Sprintf("telebot not created: %s", err.Error()))
@@ -96,5 +100,36 @@ func main() {
 		slogFatal(fmt.Sprintf("bot not initialized: %s", err.Error()))
 	}
 
-	bot.Start()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+
+	go periodicTask(ctx, time.Second*2)
+	go bot.Start()
+
+	slog.Info("bot started")
+	<-stop
+	slog.Info("shutting down")
+
+	cancel()
+	slog.Info("stopping bot")
+	bot.Stop()
+	slog.Info("bot stopped")
+}
+
+func periodicTask(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			slog.Info("notification worker stopped")
+			return
+		case <-ticker.C:
+			slog.Info("RUNNING WORKER POGGERS")
+		}
+	}
 }
