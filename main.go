@@ -58,13 +58,6 @@ func main() {
 
 	slog.Debug("loaded config", "config", conf)
 
-	httpCli := &http.Client{
-		Timeout: time.Second * 5, // TODO: move to config
-
-		// disable security since my vpn is not behind any domain
-		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
-	}
-
 	db, err := sql.Open("sqlite3", "db.db")
 	if err != nil {
 		slogFatal(fmt.Sprintf("db not opened: %s", err.Error()))
@@ -74,12 +67,21 @@ func main() {
 		slogFatal(fmt.Sprintf("ping failed: %s", err.Error()))
 	}
 
-	stateLRU := expirable.NewLRU[string, bot.State](100, nil, time.Hour*24)
+	stateLRU := expirable.NewLRU[string, bot.State](100, nil, time.Hour*24) // TODO: move ttl to config
 	storage := storage.New(db, sq.StatementBuilder.PlaceholderFormat(sq.Question))
 
-	outlineCli, err := outline.NewClient(conf.OutlineURL, outline.WithClient(httpCli))
+	outlineHttpCli := &http.Client{
+		Timeout:   time.Second * 3,                                                         // TODO: move timeout to config
+		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}, // coz my outline without tls :clown:
+	}
+
+	outlineCli, err := outline.NewClient(conf.OutlineURL, outline.WithClient(outlineHttpCli))
 	if err != nil {
 		slogFatal(err.Error())
+	}
+
+	telebotHttpCli := &http.Client{
+		Timeout: time.Second * 10, // TODO: move timeout to config
 	}
 
 	telebot, err := tele.NewBot(tele.Settings{
@@ -87,15 +89,22 @@ func main() {
 		OnError: func(err error, c tele.Context) {
 			slog.Error(fmt.Sprintf("unhandled error: %s", err.Error()))
 		},
-		Client:  httpCli,
-		Poller:  &tele.LongPoller{Timeout: time.Second * 3}, // TODO: move to config
+		Client:  telebotHttpCli,
+		Poller:  &tele.LongPoller{Timeout: time.Second * 3}, // TODO: move timeout to config
 		Verbose: false,
 	})
 	if err != nil {
 		slogFatal(fmt.Sprintf("telebot not created: %s", err.Error()))
 	}
 
-	bot, err := bot.New(telebot, conf.TGAdmin, stateLRU, outlineCli, storage)
+	bot, err := bot.New(&bot.Params{
+		Telebot:        telebot,
+		AdminID:        conf.TGAdmin,
+		State:          stateLRU,
+		Outline:        outlineCli,
+		Storage:        storage,
+		WorkerInterval: time.Second * 5, // TODO: move to config
+	})
 	if err != nil {
 		slogFatal(fmt.Sprintf("bot not initialized: %s", err.Error()))
 	}
@@ -106,7 +115,7 @@ func main() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
-	go periodicTask(ctx, time.Second*2)
+	go bot.StartWorker(ctx)
 	go bot.Start()
 
 	slog.Info("bot started")
@@ -117,19 +126,4 @@ func main() {
 	slog.Info("stopping bot")
 	bot.Stop()
 	slog.Info("bot stopped")
-}
-
-func periodicTask(ctx context.Context, interval time.Duration) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			slog.Info("notification worker stopped")
-			return
-		case <-ticker.C:
-			slog.Info("RUNNING WORKER POGGERS")
-		}
-	}
 }

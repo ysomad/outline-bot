@@ -221,8 +221,6 @@ func (s *Storage) CountActiveKeys(uid int64) (uint8, error) {
 		return 0, err
 	}
 
-	slog.Debug(sql)
-
 	row := s.db.QueryRow(sql, args...)
 
 	var count uint8
@@ -232,4 +230,59 @@ func (s *Storage) CountActiveKeys(uid int64) (uint8, error) {
 	}
 
 	return count, nil
+}
+
+type ExpiringKey struct {
+	ID        string
+	Name      string
+	URL       string
+	ExpiresAt time.Time
+	ExpiresIn time.Duration
+	OrderID   domain.OrderID
+	Price     int
+	UID       int64
+}
+
+// ListExpiringKeys returns keys that expire in or less than exp.
+func (s *Storage) ListExpiringKeys(exp time.Duration) ([]ExpiringKey, error) {
+	sql, args, err := s.sq.
+		Select("ak.id, ak.name, ak.url, o.expires_at", "o.id, o.price, o.uid",
+			"(JULIANDAY(o.expires_at) - JULIANDAY(current_timestamp)) * 24 * 60 * 60 expires_in").
+		From("access_keys ak").
+		InnerJoin("orders o ON o.id = ak.order_id").
+		Where(sq.Lt{"expires_in": exp.Seconds()}).
+		ToSql()
+	if err != nil {
+		return nil, err
+	}
+
+	slog.Debug(sql)
+
+	rows, err := s.db.Query(sql, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query: %w", err)
+	}
+	defer rows.Close()
+
+	var (
+		keys []ExpiringKey
+		diff float64
+	)
+
+	for rows.Next() {
+		k := ExpiringKey{}
+
+		if err := rows.Scan(&k.ID, &k.Name, &k.URL, &k.ExpiresAt, &k.OrderID, &k.Price, &k.UID, &diff); err != nil {
+			return nil, fmt.Errorf("scan: %w", err)
+		}
+
+		k.ExpiresIn = time.Duration(diff) * time.Second
+		keys = append(keys, k)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows: %w", err)
+	}
+
+	return keys, nil
 }

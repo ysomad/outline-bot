@@ -22,4 +22,6 @@ const (
 	OrderStatusAwaitingPayment OrderStatus = "awaiting payment"
 	OrderStatusRejected        OrderStatus = "rejected"
 	OrderStatusApproved        OrderStatus = "approved"
+	OrderStatusAwaitingRenewal OrderStatus = "awaiting renewal"
+	OrderStatusRenewed         OrderStatus = "renewed"
 )

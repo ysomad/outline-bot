@@ -2,8 +2,8 @@ package bot
 
 import (
 	"fmt"
-	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/golang-lru/v2/expirable"
 	tele "gopkg.in/telebot.v3"
@@ -20,15 +20,25 @@ const (
 )
 
 type Bot struct {
-	tele    *tele.Bot
-	adminID int64
-	state   *expirable.LRU[string, State]
-	outline *outline.Client
-	storage *storage.Storage
+	tele           *tele.Bot
+	adminID        int64
+	workerInterval time.Duration
+	state          *expirable.LRU[string, State]
+	outline        *outline.Client
+	storage        *storage.Storage
 }
 
-func New(telebot *tele.Bot, adminID int64, state *expirable.LRU[string, State], outline *outline.Client, st *storage.Storage) (*Bot, error) {
-	if err := telebot.SetCommands([]tele.Command{
+type Params struct {
+	Telebot        *tele.Bot
+	AdminID        int64
+	State          *expirable.LRU[string, State]
+	Outline        *outline.Client
+	Storage        *storage.Storage
+	WorkerInterval time.Duration
+}
+
+func New(p *Params) (*Bot, error) {
+	if err := p.Telebot.SetCommands([]tele.Command{
 		{
 			Text:        "order",
 			Description: "Разместить заказ на оплату",
@@ -41,26 +51,27 @@ func New(telebot *tele.Bot, adminID int64, state *expirable.LRU[string, State], 
 		return nil, fmt.Errorf("commands not set: %w", err)
 	}
 
-	telebot.Use(middleware.Recover())
+	p.Telebot.Use(middleware.Recover())
 
-	bot := &Bot{
-		tele:    telebot,
-		adminID: adminID,
-		storage: st,
-		outline: outline,
-		state:   state,
+	b := &Bot{
+		tele:           p.Telebot,
+		adminID:        p.AdminID,
+		storage:        p.Storage,
+		outline:        p.Outline,
+		state:          p.State,
+		workerInterval: p.WorkerInterval,
 	}
 
-	telebot.Handle("/start", bot.handleStart)
-	telebot.Handle("/order", bot.handleOrder)
-	telebot.Handle("/profile", bot.handleProfile)
-	telebot.Handle(tele.OnCallback, bot.handleCallback)
+	b.tele.Handle("/start", b.handleStart)
+	b.tele.Handle("/order", b.handleOrder)
+	b.tele.Handle("/profile", b.handleProfile)
+	b.tele.Handle(tele.OnCallback, b.handleCallback)
 
-	adminOnly := telebot.Group()
-	adminOnly.Use(adminMiddleware(adminID))
-	adminOnly.Handle("/admin", bot.handleAdmin)
+	adminOnly := b.tele.Group()
+	adminOnly.Use(adminMiddleware(b.adminID))
+	adminOnly.Handle("/admin", b.handleAdmin)
 
-	return bot, nil
+	return b, nil
 }
 
 func (b *Bot) Start() {
@@ -163,8 +174,6 @@ func (b *Bot) handleProfile(c tele.Context) error {
 			}
 		}
 	}
-
-	slog.Debug(sb.String())
 
 	return c.Send(sb.String(), tele.ModeMarkdown)
 }

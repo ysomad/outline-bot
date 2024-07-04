@@ -86,15 +86,12 @@ func (b *Bot) handleCallback(c tele.Context) error {
 			return fmt.Errorf("order not sent to admin: %w", err)
 		}
 
-		usrKb := &tele.ReplyMarkup{}
-		usrKb.Inline(usrKb.Row(usrKb.URL("Оплатить", paymentURL)))
-
 		qr := &tele.Photo{
 			Caption: fmt.Sprintf("Заказ №%d размещен, к оплате %d₽, оплата по QR коду или кнопке ниже", orderID, price),
 			File:    tele.FromDisk(paymentQR),
 		}
 
-		return c.Send(qr, usrKb)
+		return c.Send(qr, paymentKeyboard())
 	case stepApproveOrder:
 		return b.approveOrder(c, cb)
 	case stepRejectOrder:
@@ -155,8 +152,6 @@ func (b *Bot) approveOrder(c tele.Context, cb btnCallback) error {
 
 	for i := range order.KeyAmount {
 		keyName := gen.Generate()
-
-		slog.Debug("creating new key", "name", keyName)
 
 		key, err := b.outline.AccessKeysPost(context.TODO(), outline.NewOptAccessKeysPostReq(outline.AccessKeysPostReq{
 			Name: outline.NewOptString(keyName),
