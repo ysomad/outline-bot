@@ -98,12 +98,11 @@ func main() {
 	}
 
 	bot, err := bot.New(&bot.Params{
-		Telebot:        telebot,
-		AdminID:        conf.TGAdmin,
-		State:          stateLRU,
-		Outline:        outlineCli,
-		Storage:        storage,
-		WorkerInterval: time.Second * 30, // TODO: move to config
+		Telebot: telebot,
+		AdminID: conf.TGAdmin,
+		State:   stateLRU,
+		Outline: outlineCli,
+		Storage: storage,
 	})
 	if err != nil {
 		slogFatal(fmt.Sprintf("bot not initialized: %s", err.Error()))
@@ -115,7 +114,8 @@ func main() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
-	go bot.StartWorker(ctx)
+	go bot.NotifyExpiringOrders(ctx, time.Second*30) // TODO: move interval to config
+	go bot.DeactivateExpiredKeys(ctx, time.Hour)     // TODO: move interval to config
 	go bot.Start()
 
 	slog.Info("bot started")

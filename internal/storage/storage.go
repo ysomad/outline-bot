@@ -321,3 +321,7 @@ WHERE id = ?
 
 	return nil
 }
+
+// func (s *Storage) CloseOrders(oids []domain.OrderID, closedAt time.Time) error {
+// 	return nil
+// }

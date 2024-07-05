@@ -12,29 +12,41 @@ import (
 	tele "gopkg.in/telebot.v3"
 )
 
-// StartWorker starts worker which is running jobs in parallel every b.workerInterval.
-func (b *Bot) StartWorker(ctx context.Context) {
-	ticker := time.NewTicker(b.workerInterval)
+func startWorker(ctx context.Context, interval time.Duration, f func() error, name string) {
+	slog.Info("starting worker", "worker", name)
+
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
-			slog.Info("scheduler stopped")
+			slog.Info("worker stopped", "worker", name)
 			return
 		case <-ticker.C:
-			slog.Info("RUNNING WORKER POGGERS")
-			if err := b.notifyExpiringOrders(); err != nil {
-				slog.Error("expiring orders not notified", "cause", err.Error())
+			if err := f(); err != nil {
+				slog.Error("expiring orders not notified", "cause", err.Error(), "worker", name)
 			}
 		}
 	}
+}
+
+func (b *Bot) NotifyExpiringOrders(ctx context.Context, interval time.Duration) {
+	startWorker(ctx, interval, b.notifyExpiringOrders, "expiring_orders_notifier")
+}
+
+func (b *Bot) DeactivateExpiredKeys(ctx context.Context, interval time.Duration) {
+	startWorker(ctx, interval, b.deactivateExpiredKeys, "expired_keys_deactivator")
 }
 
 func (b *Bot) notifyExpiringOrders() error {
 	keys, err := b.storage.ListExpiringKeys(domain.BeforeOrderExpiration)
 	if err != nil {
 		return fmt.Errorf("expiring keys not listed: %w", err)
+	}
+
+	if len(keys) == 0 {
+		return nil
 	}
 
 	type order struct {
@@ -123,5 +135,9 @@ func (b *Bot) notifyExpiringOrders() error {
 		}
 	}
 
+	return nil
+}
+
+func (b *Bot) deactivateExpiredKeys() error {
 	return nil
 }

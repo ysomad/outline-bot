@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/hashicorp/golang-lru/v2/expirable"
 	tele "gopkg.in/telebot.v3"
@@ -23,21 +22,19 @@ const (
 )
 
 type Bot struct {
-	tele           *tele.Bot
-	adminID        int64
-	workerInterval time.Duration
-	state          *expirable.LRU[string, State]
-	outline        *outline.Client
-	storage        *storage.Storage
+	tele    *tele.Bot
+	adminID int64
+	state   *expirable.LRU[string, State]
+	outline *outline.Client
+	storage *storage.Storage
 }
 
 type Params struct {
-	Telebot        *tele.Bot
-	AdminID        int64
-	State          *expirable.LRU[string, State]
-	Outline        *outline.Client
-	Storage        *storage.Storage
-	WorkerInterval time.Duration
+	Telebot *tele.Bot
+	AdminID int64
+	State   *expirable.LRU[string, State]
+	Outline *outline.Client
+	Storage *storage.Storage
 }
 
 func New(p *Params) (*Bot, error) {
@@ -57,12 +54,11 @@ func New(p *Params) (*Bot, error) {
 	p.Telebot.Use(middleware.Recover())
 
 	b := &Bot{
-		tele:           p.Telebot,
-		adminID:        p.AdminID,
-		storage:        p.Storage,
-		outline:        p.Outline,
-		state:          p.State,
-		workerInterval: p.WorkerInterval,
+		tele:    p.Telebot,
+		adminID: p.AdminID,
+		storage: p.Storage,
+		outline: p.Outline,
+		state:   p.State,
 	}
 
 	b.tele.Handle("/start", b.handleStart)
