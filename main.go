@@ -103,7 +103,7 @@ func main() {
 		State:          stateLRU,
 		Outline:        outlineCli,
 		Storage:        storage,
-		WorkerInterval: time.Second * 60, // TODO: move to config
+		WorkerInterval: time.Second * 15, // TODO: move to config
 	})
 	if err != nil {
 		slogFatal(fmt.Sprintf("bot not initialized: %s", err.Error()))

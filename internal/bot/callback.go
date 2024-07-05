@@ -94,28 +94,28 @@ func (b *Bot) handleCallback(c tele.Context) error {
 		return c.Send(qr, paymentKeyboard())
 	case stepApproveOrder:
 		return b.approveOrder(c, cb)
-	case stepRejectOrder:
-		orderID, err := domain.OrderIDFromString(cb.data)
+	case stepRejectOrder, stepRejectOrderRenewal:
+		oid, err := domain.OrderIDFromString(cb.data)
 		if err != nil {
 			return err
 		}
 
-		order, err := b.storage.GetOrder(orderID)
+		order, err := b.storage.GetOrder(oid)
 		if err != nil {
 			return err
 		}
 
-		if err := b.storage.Close(orderID, domain.OrderStatusRejected, now); err != nil {
+		if err := b.storage.Close(oid, domain.OrderStatusRejected, now); err != nil {
 			return fmt.Errorf("order not rejected: %w", err)
 		}
 
 		slog.Info("order rejected", "order", order)
 
-		if _, err := b.tele.Send(recipient(order.UID), fmt.Sprintf("Заказ №%d отклонен администратором", orderID)); err != nil {
+		if _, err := b.tele.Send(recipient(order.UID), fmt.Sprintf("Заказ №%d отклонен администратором", oid)); err != nil {
 			return fmt.Errorf("reject msg not sent to user: %w", err)
 		}
 
-		return c.Edit(fmt.Sprintf("Заказ №%d отклонен", orderID))
+		return c.Edit(fmt.Sprintf("Заказ №%d отклонен", oid))
 	case stepCancel:
 		if err := c.Delete(); err != nil {
 			return err
