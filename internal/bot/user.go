@@ -35,9 +35,6 @@ func (u *user) ID() string {
 
 // Recipient implements telebot.Recipient
 func (u *user) Recipient() string {
-	if u.username != "" {
-		return u.username
-	}
 	return u.ID()
 }
 

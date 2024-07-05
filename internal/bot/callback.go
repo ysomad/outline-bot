@@ -82,7 +82,8 @@ func (b *Bot) handleCallback(c tele.Context) error {
 			adminKb.Row(adminKb.Data("Отклонить", stepRejectOrder.String(), orderID.String())),
 		)
 
-		if _, err = b.tele.Send(recipient(b.adminID), orderCreatedMsg(orderID, price, keyAmount, usr), adminKb); err != nil {
+		_, err = b.tele.Send(recipient(b.adminID), orderCreatedMsg(orderID, price, keyAmount, usr), adminKb)
+		if err != nil {
 			return fmt.Errorf("order not sent to admin: %w", err)
 		}
 
@@ -148,7 +149,7 @@ func (b *Bot) handleCallback(c tele.Context) error {
 			return err
 		}
 
-		if err := b.storage.CloseOrder(oid, domain.OrderStatusRejected, now); err != nil {
+		if err = b.storage.CloseOrder(oid, domain.OrderStatusRejected, now); err != nil {
 			return fmt.Errorf("order not rejected: %w", err)
 		}
 
@@ -160,15 +161,15 @@ func (b *Bot) handleCallback(c tele.Context) error {
 			return fmt.Errorf("order reject title not written: %w", err)
 		}
 
-		if _, err = b.tele.Send(recipient(order.UID), sb.String()); err != nil {
-			return fmt.Errorf("reject msg not sent to user: %w", err)
-		}
-
-		orderUser := user{
+		orderUser := &user{
 			id:        order.UID,
 			username:  order.Username.String,
 			firstName: order.FirstName.String,
 			lastName:  order.LastName.String,
+		}
+
+		if _, err = b.tele.Send(orderUser, sb.String()); err != nil {
+			return fmt.Errorf("reject msg not sent to user: %w", err)
 		}
 
 		if _, err = sb.WriteString("\n\n"); err != nil {
