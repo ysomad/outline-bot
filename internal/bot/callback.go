@@ -56,7 +56,7 @@ func (b *Bot) handleCallback(c tele.Context) error {
 			return err
 		}
 
-		if err := c.Delete(); err != nil {
+		if err = c.Delete(); err != nil {
 			return fmt.Errorf("msg not deleted: %w", err)
 		}
 
@@ -166,14 +166,19 @@ func (b *Bot) approveOrder(c tele.Context, cb btnCallback) error {
 		}
 
 		keys[i] = storage.Key{
-			ID:        key.ID,
-			Name:      key.Name.Value,
-			URL:       key.AccessUrl.Value,
-			ExpiresAt: exp,
+			ID:   key.ID,
+			Name: key.Name.Value,
+			URL:  key.AccessUrl.Value,
 		}
 	}
 
-	if err := b.storage.ApproveOrder(order.ID, keys, now); err != nil {
+	err = b.storage.ApproveOrder(storage.ApproveOrderParams{
+		OID:       orderID,
+		Keys:      keys,
+		ClosedAt:  now,
+		ExpiresAt: exp,
+	})
+	if err != nil {
 		return fmt.Errorf("order not approved: %w", err)
 	}
 

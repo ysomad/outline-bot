@@ -33,13 +33,12 @@ type Order struct {
 	KeyAmount int
 	Price     int
 	Status    sql.NullString
-	ClosedAt  sql.NullTime
 	CreatedAt sql.NullTime
 }
 
 func (s *Storage) GetOrder(oid domain.OrderID) (Order, error) {
 	sql, args, err := s.sq.
-		Select("id, uid, username, first_name, last_name, key_amount, price, status, closed_at, created_at").
+		Select("id, uid, username, first_name, last_name, key_amount, price, status, created_at").
 		From("orders").
 		Where(sq.Eq{"id": oid}).
 		ToSql()
@@ -58,7 +57,6 @@ func (s *Storage) GetOrder(oid domain.OrderID) (Order, error) {
 		&o.KeyAmount,
 		&o.Price,
 		&o.Status,
-		&o.ClosedAt,
 		&o.CreatedAt,
 	)
 	if err != nil {
@@ -111,18 +109,25 @@ func (s *Storage) Close(oid domain.OrderID, status domain.OrderStatus, closedAt 
 }
 
 type Key struct {
-	ID        string
-	Name      string
-	URL       string
+	ID   string
+	Name string
+	URL  string
+}
+
+type ApproveOrderParams struct {
+	OID       domain.OrderID
+	Keys      []Key
+	ClosedAt  time.Time
 	ExpiresAt time.Time
 }
 
-func (s *Storage) ApproveOrder(oid domain.OrderID, keys []Key, approvedAt time.Time) error {
+func (s *Storage) ApproveOrder(p ApproveOrderParams) error {
 	sql1, args1, err := s.sq.
 		Update("orders").
-		Set("closed_at", approvedAt.UTC()).
+		Set("closed_at", p.ClosedAt.UTC()).
+		Set("expires_at", p.ExpiresAt.UTC()).
 		Set("status", domain.OrderStatusApproved).
-		Where(sq.Eq{"id": oid}).
+		Where(sq.Eq{"id": p.OID}).
 		ToSql()
 	if err != nil {
 		return err
@@ -130,10 +135,10 @@ func (s *Storage) ApproveOrder(oid domain.OrderID, keys []Key, approvedAt time.T
 
 	b := s.sq.
 		Insert("access_keys").
-		Columns("id, name, url, order_id, expires_at")
+		Columns("id, name, url, order_id")
 
-	for _, k := range keys {
-		b = b.Values(k.ID, k.Name, k.URL, oid, k.ExpiresAt)
+	for _, k := range p.Keys {
+		b = b.Values(k.ID, k.Name, k.URL, p.OID)
 	}
 
 	sql2, args2, err := b.ToSql()
@@ -147,11 +152,11 @@ func (s *Storage) ApproveOrder(oid domain.OrderID, keys []Key, approvedAt time.T
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.Exec(sql1, args1...); err != nil {
+	if _, err = tx.Exec(sql1, args1...); err != nil {
 		return fmt.Errorf("order not closed: %w", err)
 	}
 
-	if _, err := tx.Exec(sql2, args2...); err != nil {
+	if _, err = tx.Exec(sql2, args2...); err != nil {
 		return fmt.Errorf("access keys not created: %w", err)
 	}
 
@@ -162,7 +167,7 @@ func (s *Storage) ApproveOrder(oid domain.OrderID, keys []Key, approvedAt time.T
 	return nil
 }
 
-type KeyFromOrder struct {
+type ActiveKey struct {
 	ID        string
 	Name      string
 	URL       string
@@ -171,9 +176,9 @@ type KeyFromOrder struct {
 	Price     int
 }
 
-func (s *Storage) ListActiveUserKeys(uid int64) ([]KeyFromOrder, error) {
+func (s *Storage) ListActiveUserKeys(uid int64) ([]ActiveKey, error) {
 	sql, args, err := s.sq.
-		Select("ak.id, ak.url, ak.expires_at, ak.name, o.id, o.price").
+		Select("ak.id, ak.url, o.expires_at, ak.name, o.id, o.price").
 		From("access_keys ak").
 		InnerJoin("orders o ON ak.order_id = o.id").
 		Where(sq.Eq{"o.uid": uid}).
@@ -190,10 +195,10 @@ func (s *Storage) ListActiveUserKeys(uid int64) ([]KeyFromOrder, error) {
 	}
 	defer rows.Close()
 
-	var keys []KeyFromOrder
+	var keys []ActiveKey
 
 	for rows.Next() {
-		k := KeyFromOrder{}
+		k := ActiveKey{}
 
 		if err := rows.Scan(&k.ID, &k.URL, &k.ExpiresAt, &k.Name, &k.OrderID, &k.Price); err != nil {
 			return nil, err
@@ -239,14 +244,19 @@ type ExpiringKey struct {
 	ExpiresAt time.Time
 	ExpiresIn time.Duration
 	OrderID   domain.OrderID
+	KeyAmount int
 	Price     int
 	UID       int64
+	Username  sql.NullString
+	FirstName sql.NullString
+	LastName  sql.NullString
 }
 
 // ListExpiringKeys returns keys that expire in or less than exp.
 func (s *Storage) ListExpiringKeys(exp time.Duration) ([]ExpiringKey, error) {
 	sql, args, err := s.sq.
-		Select("ak.id, ak.name, ak.url, o.expires_at", "o.id, o.price, o.uid",
+		Select("ak.id, ak.name, ak.url, o.expires_at, o.id, o.key_amount, o.price",
+			"o.uid, o.username, o.first_name, o.last_name",
 			"(JULIANDAY(o.expires_at) - JULIANDAY(current_timestamp)) * 24 * 60 * 60 expires_in").
 		From("access_keys ak").
 		InnerJoin("orders o ON o.id = ak.order_id").
@@ -272,7 +282,11 @@ func (s *Storage) ListExpiringKeys(exp time.Duration) ([]ExpiringKey, error) {
 	for rows.Next() {
 		k := ExpiringKey{}
 
-		if err := rows.Scan(&k.ID, &k.Name, &k.URL, &k.ExpiresAt, &k.OrderID, &k.Price, &k.UID, &diff); err != nil {
+		err := rows.Scan(
+			&k.ID, &k.Name, &k.URL, &k.ExpiresAt, &k.OrderID,
+			&k.KeyAmount, &k.Price, &k.UID, &k.Username, &k.FirstName, &k.LastName,
+			&diff)
+		if err != nil {
 			return nil, fmt.Errorf("scan: %w", err)
 		}
 

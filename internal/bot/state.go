@@ -8,6 +8,9 @@ const (
 
 	stepApproveOrder step = "approve_order"
 	stepRejectOrder  step = "reject_order"
+
+	stepRenewOrder         step = "renew_order"
+	stepRejectOrderRenewal step = "reject_order_renewal"
 )
 
 func (s step) String() string { return string(s) }

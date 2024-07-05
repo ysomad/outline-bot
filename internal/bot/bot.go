@@ -133,7 +133,7 @@ func (b *Bot) handleProfile(c tele.Context) error {
 	}
 
 	var (
-		groupedKeys = make(map[domain.OrderID][]storage.KeyFromOrder)
+		groupedKeys = make(map[domain.OrderID][]storage.ActiveKey)
 		oids        []domain.OrderID
 	)
 
@@ -158,7 +158,7 @@ func (b *Bot) handleProfile(c tele.Context) error {
 		for _, k := range groupedKeys[oid] {
 			// print order title only once
 			if !titlePrinted {
-				_, err := fmt.Fprintf(sb,
+				_, err = fmt.Fprintf(sb,
 					"\n\n\nЗаказ №%d\nДействует до %s\nСтоимость продления %d руб.\n",
 					k.OrderID, k.ExpiresAt.Format("02.01.2006"), k.Price)
 				if err != nil {
