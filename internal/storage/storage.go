@@ -34,11 +34,12 @@ type Order struct {
 	Price     int
 	Status    sql.NullString
 	CreatedAt sql.NullTime
+	ExpiresAt sql.NullTime
 }
 
 func (s *Storage) GetOrder(oid domain.OrderID) (Order, error) {
 	sql, args, err := s.sq.
-		Select("id, uid, username, first_name, last_name, key_amount, price, status, created_at").
+		Select("id, uid, username, first_name, last_name, key_amount, price, status, created_at, expires_at").
 		From("orders").
 		Where(sq.Eq{"id": oid}).
 		ToSql()
@@ -58,6 +59,7 @@ func (s *Storage) GetOrder(oid domain.OrderID) (Order, error) {
 		&o.Price,
 		&o.Status,
 		&o.CreatedAt,
+		&o.ExpiresAt,
 	)
 	if err != nil {
 		return Order{}, err
@@ -303,13 +305,18 @@ func (s *Storage) ListExpiringKeys(exp time.Duration) ([]ExpiringKey, error) {
 
 func (s *Storage) RenewOrder(oid domain.OrderID, exp time.Duration) error {
 	sql := fmt.Sprintf(`
-        UPDATE orders
-        SET expires_at = datetime(expires_at, '+%d seconds')
-        WHERE id = ?
-    `, int(exp.Seconds()))
+UPDATE orders
+SET expires_at = datetime(expires_at, '+%.f seconds')
+WHERE id = ?
+`, exp.Seconds())
 
-	if _, err := s.db.Exec(sql, oid); err != nil {
-		return err
+	res, err := s.db.Exec(sql, oid)
+	if err != nil {
+		return fmt.Errorf("exec: %w", err)
+	}
+
+	if _, err := res.RowsAffected(); err != nil {
+		return fmt.Errorf("rows affected: %w", err)
 	}
 
 	return nil

@@ -188,16 +188,50 @@ func (b *Bot) handleRenew(c tele.Context) error {
 		return errors.New("/renew - invalid args")
 	}
 
-	oid, err := strconv.Atoi(args[0])
+	n, err := strconv.Atoi(args[0])
 	if err != nil {
 		return fmt.Errorf("atoi: %w", err)
 	}
 
-	if err := b.storage.RenewOrder(domain.OrderID(oid), domain.OrderTTL); err != nil {
+	oid := domain.OrderID(n)
+
+	if err = b.storage.RenewOrder(oid, domain.OrderTTL); err != nil {
 		return fmt.Errorf("order not renewed: %w", err)
 	}
 
-	slog.Info("order renewed by admin", "oid", oid)
+	o, err := b.storage.GetOrder(oid)
+	if err != nil {
+		return fmt.Errorf("order not found: %w", err)
+	}
 
-	return c.Send(fmt.Sprintf("Заказ №%d продлен", oid))
+	slog.Info("order renewed by admin", "oid", n)
+
+	sb := &strings.Builder{}
+
+	_, err = fmt.Fprintf(sb, "Заказ №%d продлен до %s\n\nКлючей %d шт.\nОплачено %d руб.",
+		o.ID, o.ExpiresAt.Time.Format("02.01.2006"), o.KeyAmount, o.Price)
+	if err != nil {
+		return fmt.Errorf("renew msg not written: %w", err)
+	}
+
+	if _, err = b.tele.Send(recipient(o.UID), sb.String()); err != nil {
+		return fmt.Errorf("renew msg not sent to user: %w", err)
+	}
+
+	if _, err = sb.WriteString("\n\n"); err != nil {
+		return fmt.Errorf("\n not written: %w", err)
+	}
+
+	usr := user{
+		id:        o.UID,
+		username:  o.Username.String,
+		firstName: o.FirstName.String,
+		lastName:  o.LastName.String,
+	}
+
+	if err = usr.write(sb); err != nil {
+		return fmt.Errorf("usr not written: %w", err)
+	}
+
+	return c.Send(sb.String())
 }
