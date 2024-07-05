@@ -63,7 +63,7 @@ func main() {
 		slogFatal(fmt.Sprintf("db not opened: %s", err.Error()))
 	}
 
-	if err := db.Ping(); err != nil {
+	if err = db.Ping(); err != nil {
 		slogFatal(fmt.Sprintf("ping failed: %s", err.Error()))
 	}
 
@@ -103,7 +103,7 @@ func main() {
 		State:          stateLRU,
 		Outline:        outlineCli,
 		Storage:        storage,
-		WorkerInterval: time.Second * 5, // TODO: move to config
+		WorkerInterval: time.Second * 60, // TODO: move to config
 	})
 	if err != nil {
 		slogFatal(fmt.Sprintf("bot not initialized: %s", err.Error()))

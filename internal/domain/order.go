@@ -1,6 +1,14 @@
 package domain
 
-import "strconv"
+import (
+	"strconv"
+	"time"
+)
+
+const (
+	OrderTTL              = 24 * time.Hour * 30 // 30 days
+	BeforeOrderExpiration = time.Hour * 24 * 3  // 3 days
+)
 
 type OrderID int32
 

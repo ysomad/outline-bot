@@ -1,7 +1,10 @@
 package bot
 
 import (
+	"errors"
 	"fmt"
+	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
@@ -69,7 +72,7 @@ func New(p *Params) (*Bot, error) {
 
 	adminOnly := b.tele.Group()
 	adminOnly.Use(adminMiddleware(b.adminID))
-	adminOnly.Handle("/admin", b.handleAdmin)
+	adminOnly.Handle("/renew", b.handleRenew)
 
 	return b, nil
 }
@@ -178,17 +181,23 @@ func (b *Bot) handleProfile(c tele.Context) error {
 	return c.Send(sb.String(), tele.ModeMarkdown)
 }
 
-func (b *Bot) handleAdmin(c tele.Context) error {
-	// orders, err := b.storage.UnpaidOrders()
-	// if err != nil {
-	// 	return err
-	// }
+func (b *Bot) handleRenew(c tele.Context) error {
+	args := c.Args()
 
-	// отправить ордера с клавой (Одобрить, отказать)
-	// одобрить если пришел платеж и отказать если не пришел
-	// for _, o := range orders {
-	// 	kb := &tele.ReplyMarkup{}
-	// }
+	if len(args) != 1 {
+		return errors.New("/renew - invalid args")
+	}
 
-	return nil
+	oid, err := strconv.Atoi(args[0])
+	if err != nil {
+		return fmt.Errorf("atoi: %w", err)
+	}
+
+	if err := b.storage.RenewOrder(domain.OrderID(oid), domain.OrderTTL); err != nil {
+		return fmt.Errorf("order not renewed: %w", err)
+	}
+
+	slog.Info("order renewed by admin", "oid", oid)
+
+	return c.Send(fmt.Sprintf("Заказ №%d продлен", oid))
 }

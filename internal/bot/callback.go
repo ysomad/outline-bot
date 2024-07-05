@@ -144,7 +144,7 @@ func (b *Bot) approveOrder(c tele.Context, cb btnCallback) error {
 	keys := make([]storage.Key, order.KeyAmount)
 	now := time.Now()
 	gen := namegenerator.NewNameGenerator(now.UnixNano())
-	exp := now.Add(domain.KeyTTL)
+	exp := now.Add(domain.OrderTTL)
 
 	usrSB := &strings.Builder{}
 	usrSB.Grow(len(keys) + 1)

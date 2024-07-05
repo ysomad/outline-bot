@@ -182,7 +182,7 @@ func (s *Storage) ListActiveUserKeys(uid int64) ([]ActiveKey, error) {
 		From("access_keys ak").
 		InnerJoin("orders o ON ak.order_id = o.id").
 		Where(sq.Eq{"o.uid": uid}).
-		Where(sq.Lt{"ak.expires_at": "current_timestamp"}).
+		Where(sq.Lt{"o.expires_at": "current_timestamp"}).
 		OrderBy("o.id").
 		ToSql()
 	if err != nil {
@@ -220,7 +220,7 @@ func (s *Storage) CountActiveKeys(uid int64) (uint8, error) {
 		From("access_keys ak").
 		InnerJoin("orders o on o.id = ak.order_id").
 		Where(sq.Eq{"o.uid": uid}).
-		Where("ak.expires_at > current_timestamp").
+		Where("o.expires_at > current_timestamp").
 		ToSql()
 	if err != nil {
 		return 0, err
@@ -299,4 +299,18 @@ func (s *Storage) ListExpiringKeys(exp time.Duration) ([]ExpiringKey, error) {
 	}
 
 	return keys, nil
+}
+
+func (s *Storage) RenewOrder(oid domain.OrderID, exp time.Duration) error {
+	sql := fmt.Sprintf(`
+        UPDATE orders
+        SET expires_at = datetime(expires_at, '+%d seconds')
+        WHERE id = ?
+    `, int(exp.Seconds()))
+
+	if _, err := s.db.Exec(sql, oid); err != nil {
+		return err
+	}
+
+	return nil
 }

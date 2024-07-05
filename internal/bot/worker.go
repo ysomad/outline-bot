@@ -76,7 +76,6 @@ func (b *Bot) notifyExpiringOrders() error {
 		}
 
 		for i, k := range keys {
-
 			if _, err = fmt.Fprintf(sb, "%s %s", k.ID, k.Name); err != nil {
 				return fmt.Errorf("key msg not written: %w", err)
 			}
