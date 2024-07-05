@@ -9,7 +9,7 @@ const (
 	stepApproveOrder step = "approve_order"
 	stepRejectOrder  step = "reject_order"
 
-	stepRenewOrder         step = "renew_order"
+	stepOrderRenewApproved step = "renew_order_approved"
 	stepRejectOrderRenewal step = "reject_order_renewal"
 )
 

@@ -113,7 +113,7 @@ func (b *Bot) notifyExpiringOrders() error {
 
 		kb := &tele.ReplyMarkup{}
 		kb.Inline(
-			kb.Row(kb.Data("Продлить на 1 месяц", stepRenewOrder.String(), order.id.String())),
+			kb.Row(kb.Data("Продлить на 1 месяц", stepOrderRenewApproved.String(), order.id.String())),
 			kb.Row(kb.Data("Отклонить продление", stepRejectOrderRenewal.String(), order.id.String())),
 		)
 

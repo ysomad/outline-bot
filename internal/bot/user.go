@@ -20,8 +20,8 @@ func recipient(uid int64) *user {
 	return &user{id: uid}
 }
 
-func newUser(c *telebot.Chat) user {
-	return user{
+func newUser(c *telebot.Chat) *user {
+	return &user{
 		id:        c.ID,
 		username:  c.Username,
 		firstName: c.FirstName,

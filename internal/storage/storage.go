@@ -102,7 +102,7 @@ func (s *Storage) CreateOrder(p CreateOrderParams) (domain.OrderID, error) {
 	return domain.OrderID(id), nil
 }
 
-func (s *Storage) Close(oid domain.OrderID, status domain.OrderStatus, closedAt time.Time) error {
+func (s *Storage) CloseOrder(oid domain.OrderID, status domain.OrderStatus, closedAt time.Time) error {
 	if _, err := s.db.Exec("UPDATE orders SET closed_at = ?, status = ? WHERE id = ?",
 		closedAt.UTC(), status, oid); err != nil {
 		return err
@@ -119,14 +119,12 @@ type Key struct {
 type ApproveOrderParams struct {
 	OID       domain.OrderID
 	Keys      []Key
-	ClosedAt  time.Time
 	ExpiresAt time.Time
 }
 
 func (s *Storage) ApproveOrder(p ApproveOrderParams) error {
 	sql1, args1, err := s.sq.
 		Update("orders").
-		Set("closed_at", p.ClosedAt.UTC()).
 		Set("expires_at", p.ExpiresAt.UTC()).
 		Set("status", domain.OrderStatusApproved).
 		Where(sq.Eq{"id": p.OID}).
@@ -185,6 +183,7 @@ func (s *Storage) ListActiveUserKeys(uid int64) ([]ActiveKey, error) {
 		InnerJoin("orders o ON ak.order_id = o.id").
 		Where(sq.Eq{"o.uid": uid}).
 		Where(sq.Lt{"o.expires_at": "current_timestamp"}).
+		Where(sq.Eq{"o.closed_at": nil}).
 		OrderBy("o.id").
 		ToSql()
 	if err != nil {
@@ -263,6 +262,7 @@ func (s *Storage) ListExpiringKeys(exp time.Duration) ([]ExpiringKey, error) {
 		From("access_keys ak").
 		InnerJoin("orders o ON o.id = ak.order_id").
 		Where(sq.Lt{"expires_in": exp.Seconds()}).
+		Where(sq.Eq{"closed_at": nil}).
 		ToSql()
 	if err != nil {
 		return nil, err
