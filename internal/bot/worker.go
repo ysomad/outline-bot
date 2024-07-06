@@ -25,7 +25,7 @@ func startWorker(ctx context.Context, interval time.Duration, f func() error, na
 			return
 		case <-ticker.C:
 			if err := f(); err != nil {
-				slog.Error("expiring orders not notified", "cause", err.Error(), "worker", name)
+				slog.Error("worker failed", "cause", err.Error(), "worker", name)
 			}
 		}
 	}
