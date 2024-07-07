@@ -67,31 +67,29 @@ func main() {
 		slogFatal(fmt.Sprintf("ping failed: %s", err.Error()))
 	}
 
-	stateLRU := expirable.NewLRU[string, bot.State](100, nil, time.Hour*24) // TODO: move ttl to config
+	stateLRU := expirable.NewLRU[string, bot.State](100, nil, time.Hour)
 	storage := storage.New(db, sq.StatementBuilder.PlaceholderFormat(sq.Question))
 
 	outlineHttpCli := &http.Client{
-		Timeout:   time.Second * 3,                                                         // TODO: move timeout to config
-		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}, // coz my outline without tls :clown:
+		Timeout: conf.Outline.HTTPTimeout,
+
+		// coz my outline without tls :clown:
+		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
 	}
 
-	outlineCli, err := outline.NewClient(conf.OutlineURL, outline.WithClient(outlineHttpCli))
+	outlineCli, err := outline.NewClient(conf.Outline.URL, outline.WithClient(outlineHttpCli))
 	if err != nil {
 		slogFatal(err.Error())
 	}
 
-	telebotHttpCli := &http.Client{
-		Timeout: time.Second * 10, // TODO: move timeout to config
-	}
-
 	telebot, err := tele.NewBot(tele.Settings{
-		Token: conf.TGToken,
+		Token: conf.TG.Token,
 		OnError: func(err error, c tele.Context) {
 			slog.Error(fmt.Sprintf("unhandled error: %s", err.Error()))
 		},
-		Client:  telebotHttpCli,
-		Poller:  &tele.LongPoller{Timeout: time.Second * 3}, // TODO: move timeout to config
-		Verbose: false,
+		Client:  &http.Client{Timeout: conf.TG.HTTPTimeout},
+		Poller:  &tele.LongPoller{Timeout: conf.TG.PollerTimeout},
+		Verbose: conf.TG.Verbose,
 	})
 	if err != nil {
 		slogFatal(fmt.Sprintf("telebot not created: %s", err.Error()))
@@ -99,7 +97,7 @@ func main() {
 
 	bot, err := bot.New(&bot.Params{
 		Telebot: telebot,
-		AdminID: conf.TGAdmin,
+		AdminID: conf.TG.Admin,
 		State:   stateLRU,
 		Outline: outlineCli,
 		Storage: storage,
@@ -114,8 +112,8 @@ func main() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
-	go bot.NotifyExpiringOrders(ctx, time.Second*30) // TODO: move interval to config
-	go bot.DeactivateExpiredKeys(ctx, time.Hour)     // TODO: move interval to config
+	go bot.NotifyExpiringOrders(ctx, conf.Worker.NotifyExpiringInterval)
+	go bot.DeactivateExpiredKeys(ctx, conf.Worker.DeactivateExpiredInterval)
 	go bot.Start()
 
 	slog.Info("bot started")
