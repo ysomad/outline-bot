@@ -9,6 +9,7 @@ See `Makefile`
 
 # Dependencies
 - pplog (human-readable json logs in terminal)
-- gcc (for sqlite)
+- FiloSottile/musl-cross/musl-cross (for cross compilation from arm to linux amd64)
+- gcc, musl (for sqlite, musl for crosscompile from macos)
 - goose (migrations)
 

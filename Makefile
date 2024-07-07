@@ -4,15 +4,14 @@ export
 export GOOSE_DRIVER=sqlite3
 export GOOSE_DBSTRING=./db.db
 
-.PHONY:
+.PHONY: run
 run:
 	CGO_ENABLED=1 go mod tidy && go mod download && \
 	pplog go run .
 
-.PHONY: run-migrate
-run-migrate:
-	go mod tidy && go mod download && \
-	pplog go run ./cmd -migrate
+.PHONY: deploy
+deploy:
+	./build/deploy.sh
 
 .PHONY: dry-run
 dry-run: goose-reset run-migrate

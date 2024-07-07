@@ -1,0 +1,15 @@
+[Unit]
+Description=Outline bot
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/root/outline-bot
+EnvironmentFile=/root/.env
+WorkingDirectory=/root
+StandardOutput=append:/var/log/outline-bot.log
+StandardError=append:/var/log/outline-bot-error.log
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
