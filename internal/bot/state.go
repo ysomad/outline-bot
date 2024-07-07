@@ -19,8 +19,3 @@ type State struct {
 	step string
 	data any
 }
-
-type order struct {
-	keyAmount int8
-	sum       int16
-}

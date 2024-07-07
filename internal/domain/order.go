@@ -32,4 +32,5 @@ const (
 	OrderStatusApproved        OrderStatus = "approved"
 	OrderStatusAwaitingRenewal OrderStatus = "awaiting renewal"
 	OrderStatusRenewed         OrderStatus = "renewed"
+	OrderStatusExpired         OrderStatus = "expired"
 )

@@ -220,7 +220,7 @@ func (b *Bot) approveOrder(c tele.Context, cb btnCallback) error {
 	for i := range order.KeyAmount {
 		keyName := gen.Generate()
 
-		key, err := b.outline.AccessKeysPost(context.TODO(), outline.NewOptAccessKeysPostReq(outline.AccessKeysPostReq{
+		key, err := b.outline.AccessKeysPost(context.Background(), outline.NewOptAccessKeysPostReq(outline.AccessKeysPostReq{
 			Name: outline.NewOptString(keyName),
 		}))
 		if err != nil {

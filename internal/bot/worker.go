@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ysomad/outline-bot/internal/domain"
+	"github.com/ysomad/outline-bot/internal/outline"
 	"github.com/ysomad/outline-bot/internal/storage"
 	tele "gopkg.in/telebot.v3"
 )
@@ -39,25 +40,8 @@ func (b *Bot) DeactivateExpiredKeys(ctx context.Context, interval time.Duration)
 	startWorker(ctx, interval, b.deactivateExpiredKeys, "expired_keys_deactivator")
 }
 
-func (b *Bot) notifyExpiringOrders() error {
-	keys, err := b.storage.ListExpiringKeys(domain.BeforeOrderExpiration)
-	if err != nil {
-		return fmt.Errorf("expiring keys not listed: %w", err)
-	}
-
-	if len(keys) == 0 {
-		return nil
-	}
-
-	type order struct {
-		id        domain.OrderID
-		user      user
-		price     int
-		keyAmount int
-		expiresAt time.Time
-	}
-
-	groupedKeys := make(map[order][]storage.ExpiringKey)
+func groupExpiringKeys(keys []storage.ExpiringKey) map[order][]storage.ExpiringKey {
+	res := make(map[order][]storage.ExpiringKey)
 
 	for _, k := range keys {
 		o := order{
@@ -72,10 +56,34 @@ func (b *Bot) notifyExpiringOrders() error {
 			price:     k.Price,
 			expiresAt: k.ExpiresAt,
 		}
-		groupedKeys[o] = append(groupedKeys[o], k)
+
+		res[o] = append(res[o], k)
+	}
+
+	return res
+}
+
+type order struct {
+	id        domain.OrderID
+	user      user
+	price     int
+	keyAmount int
+	expiresAt time.Time
+}
+
+func (b *Bot) notifyExpiringOrders() error {
+	keys, err := b.storage.ListExpiringKeys(domain.BeforeOrderExpiration)
+	if err != nil {
+		return fmt.Errorf("expiring keys not listed: %w", err)
+	}
+
+	if len(keys) == 0 {
+		return nil
 	}
 
 	slog.Info("found expiring keys", "amount", len(keys), "keys", keys)
+
+	groupedKeys := groupExpiringKeys(keys)
 
 	sb := &strings.Builder{}
 
@@ -139,5 +147,75 @@ func (b *Bot) notifyExpiringOrders() error {
 }
 
 func (b *Bot) deactivateExpiredKeys() error {
+	keys, err := b.storage.ListExpiringKeys(0)
+	if err != nil {
+		return fmt.Errorf("expired keys not listed: %w", err)
+	}
+
+	if len(keys) == 0 {
+		return nil
+	}
+
+	slog.Info("found expired keys", "amount", len(keys))
+
+	groupedKeys := groupExpiringKeys(keys)
+	sb := &strings.Builder{}
+
+	for order, keys := range groupedKeys {
+		oid := order.id
+
+		// query db in a for loop ;-)
+		err := b.storage.CloseOrder(order.id, domain.OrderStatusExpired, time.Now())
+		if err != nil {
+			return fmt.Errorf("order %d not closed on expiration: %w", oid, err)
+		}
+
+		slog.Info("order expired", "oid", oid)
+
+		_, err = fmt.Fprintf(sb,
+			"Заказ №%d истек, деактивированы ключи %d шт. на сумму %d руб.\n\n",
+			oid, order.keyAmount, order.price)
+		if err != nil {
+			return fmt.Errorf("expired order title not written: %w", err)
+		}
+
+		for i, k := range keys {
+			_, err := b.outline.AccessKeysIDDelete(context.Background(), outline.AccessKeysIDDeleteParams{ID: k.ID})
+			if err != nil {
+				return fmt.Errorf("key with id %s not deleted from outline: %w", k.ID, err)
+			}
+
+			_, err = fmt.Fprintf(sb, "%s %s", k.ID, k.Name)
+			if err != nil {
+				return fmt.Errorf("expired key not written: %w", err)
+			}
+
+			if i != len(keys)-1 {
+				_, err = sb.WriteString(", ")
+				if err != nil {
+					return fmt.Errorf(", not written: %w", err)
+				}
+			}
+		}
+
+		if _, err := b.tele.Send(&order.user, sb.String()); err != nil {
+			return fmt.Errorf("expired order msg not sent to user: %w", err)
+		}
+
+		if _, err := sb.WriteString("\n\n"); err != nil {
+			return fmt.Errorf("\n\n not written: %w", err)
+		}
+
+		if err := order.user.write(sb); err != nil {
+			return fmt.Errorf("user not written: %w", err)
+		}
+
+		if _, err := b.tele.Send(recipient(b.adminID), sb.String()); err != nil {
+			return fmt.Errorf("expired order not sent to admin: %w", err)
+		}
+
+		sb.Reset()
+	}
+
 	return nil
 }

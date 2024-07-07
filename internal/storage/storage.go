@@ -261,14 +261,15 @@ func (s *Storage) ListExpiringKeys(exp time.Duration) ([]ExpiringKey, error) {
 			"(JULIANDAY(o.expires_at) - JULIANDAY(current_timestamp)) * 24 * 60 * 60 expires_in").
 		From("access_keys ak").
 		InnerJoin("orders o ON o.id = ak.order_id").
-		Where(sq.Lt{"expires_in": exp.Seconds()}).
+		Where(sq.LtOrEq{"expires_in": exp.Seconds()}).
 		Where(sq.Eq{"closed_at": nil}).
+		OrderBy("expires_in").
 		ToSql()
 	if err != nil {
 		return nil, err
 	}
 
-	slog.Debug(sql)
+	slog.Debug(sql, "args", args)
 
 	rows, err := s.db.Query(sql, args...)
 	if err != nil {
@@ -321,7 +322,3 @@ WHERE id = ?
 
 	return nil
 }
-
-// func (s *Storage) CloseOrders(oids []domain.OrderID, closedAt time.Time) error {
-// 	return nil
-// }
