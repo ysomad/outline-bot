@@ -109,7 +109,7 @@ func (b *Bot) selectKeyAmount(c tele.Context, cb btnCallback, usr *user, now tim
 	}
 
 	qr := &tele.Photo{
-		Caption: fmt.Sprintf("Заказ №%d размещен, к оплате %d₽, оплата по QR коду или кнопке ниже", orderID, price),
+		Caption: fmt.Sprintf("Заказ №%d размещен, к оплате %d₽, оплата по QR коду или кнопке ниже. После оплаты админ одобрит заказ и я пришлю тебе ключи доступа к ВПНу", orderID, price),
 		File:    tele.FromDisk(paymentQR),
 	}
 
