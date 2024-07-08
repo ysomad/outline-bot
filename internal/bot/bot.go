@@ -148,7 +148,6 @@ func (b *Bot) handleProfile(c tele.Context) error {
 	}
 
 	sb := &strings.Builder{}
-	sb.Grow(domain.MaxKeysPerUser + len(oids))
 
 	// build message
 	for _, oid := range oids {

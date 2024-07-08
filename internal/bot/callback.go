@@ -51,147 +51,163 @@ func (b *Bot) handleCallback(c tele.Context) error {
 
 	switch step(cb.unique) {
 	case stepSelectKeyAmount:
-		keyAmount, err := strconv.Atoi(cb.data)
-		if err != nil {
-			return err
-		}
-
-		if err = c.Delete(); err != nil {
-			return fmt.Errorf("msg not deleted: %w", err)
-		}
-
-		price := keyAmount * domain.PricePerKey
-
-		orderID, err := b.storage.CreateOrder(storage.CreateOrderParams{
-			Status:    domain.OrderStatusAwaitingPayment,
-			UID:       usr.id,
-			Username:  usr.username,
-			FirstName: usr.firstName,
-			LastName:  usr.lastName,
-			KeyAmount: keyAmount,
-			Price:     price,
-			CreatedAt: now,
-		})
-		if err != nil {
-			return fmt.Errorf("order not created: %w", err)
-		}
-
-		adminKb := &tele.ReplyMarkup{}
-		adminKb.Inline(
-			adminKb.Row(adminKb.Data("Одобрить", stepApproveOrder.String(), orderID.String())),
-			adminKb.Row(adminKb.Data("Отклонить", stepRejectOrder.String(), orderID.String())),
-		)
-
-		_, err = b.tele.Send(recipient(b.adminID), orderCreatedMsg(orderID, price, keyAmount, usr), adminKb)
-		if err != nil {
-			return fmt.Errorf("order not sent to admin: %w", err)
-		}
-
-		qr := &tele.Photo{
-			Caption: fmt.Sprintf("Заказ №%d размещен, к оплате %d₽, оплата по QR коду или кнопке ниже", orderID, price),
-			File:    tele.FromDisk(paymentQR),
-		}
-
-		return c.Send(qr, paymentKeyboard())
+		return b.selectKeyAmount(c, cb, usr, now)
 	case stepApproveOrder:
 		return b.approveOrder(c, cb)
 	case stepOrderRenewApproved:
-		oid, err := domain.OrderIDFromString(cb.data)
-		if err != nil {
-			return err
-		}
-
-		if err = b.storage.RenewOrder(oid, domain.OrderTTL); err != nil {
-			return fmt.Errorf("order not renewed: %w", err)
-		}
-
-		order, err := b.storage.GetOrder(oid)
-		if err != nil {
-			return fmt.Errorf("order not found: %w", err)
-		}
-
-		sb := &strings.Builder{}
-
-		_, err = fmt.Fprintf(sb, "Заказ №%d продлен до %s\n\nКлючей %d шт.\nОплачено %d руб.",
-			order.ID, order.ExpiresAt.Time.Format("02.01.2006"), order.KeyAmount, order.Price)
-		if err != nil {
-			return fmt.Errorf("renew msg not written: %w", err)
-		}
-
-		if _, err = b.tele.Send(recipient(order.UID), sb.String()); err != nil {
-			return fmt.Errorf("renew msg not sent to user: %w", err)
-		}
-
-		if _, err = sb.WriteString("\n\n"); err != nil {
-			return fmt.Errorf("\n not written: %w", err)
-		}
-
-		orderUser := user{
-			id:        order.UID,
-			username:  order.Username.String,
-			firstName: order.FirstName.String,
-			lastName:  order.LastName.String,
-		}
-
-		if err = orderUser.write(sb); err != nil {
-			return fmt.Errorf("order user not written: %w", err)
-		}
-
-		return c.Edit(sb.String())
+		return b.renewOrder(c, cb)
 	case stepRejectOrder, stepRejectOrderRenewal:
-		oid, err := domain.OrderIDFromString(cb.data)
-		if err != nil {
-			return err
-		}
-
-		order, err := b.storage.GetOrder(oid)
-		if err != nil {
-			return err
-		}
-
-		if err = b.storage.CloseOrder(oid, domain.OrderStatusRejected, now); err != nil {
-			return fmt.Errorf("order not rejected: %w", err)
-		}
-
-		slog.Info("order rejected", "order", order)
-
-		sb := &strings.Builder{}
-
-		if _, err = fmt.Fprintf(sb, "Заказ №%d на сумму %d руб. отклонен", order.ID, order.Price); err != nil {
-			return fmt.Errorf("order reject title not written: %w", err)
-		}
-
-		orderUser := &user{
-			id:        order.UID,
-			username:  order.Username.String,
-			firstName: order.FirstName.String,
-			lastName:  order.LastName.String,
-		}
-
-		if _, err = b.tele.Send(orderUser, sb.String()); err != nil {
-			return fmt.Errorf("reject msg not sent to user: %w", err)
-		}
-
-		if _, err = sb.WriteString("\n\n"); err != nil {
-			return fmt.Errorf("\n not written on oreder reject: %w", err)
-		}
-
-		if err = orderUser.write(sb); err != nil {
-			return fmt.Errorf("order user not written: %w", err)
-		}
-
-		return c.Edit(sb.String())
+		return b.rejectOrder(c, cb, now)
 	case stepCancel:
 		if err := c.Delete(); err != nil {
-			return err
+			return fmt.Errorf("step cancel: %w", err)
 		}
-
 		b.state.Remove(usr.ID())
-
 		return c.Send("Операция отменена")
+	default:
+		return fmt.Errorf("unsupported callback: %s", cb.unique)
+	}
+}
+
+// selectKeyAmount triggers after user selected amount of keys to create.
+// Creates order, sends payment details to the user and to admin which have to approve or reject the order.
+func (b *Bot) selectKeyAmount(c tele.Context, cb btnCallback, usr *user, now time.Time) error {
+	keyAmount, err := strconv.Atoi(cb.data)
+	if err != nil {
+		return err
 	}
 
-	return nil
+	if err = c.Delete(); err != nil {
+		return fmt.Errorf("msg not deleted: %w", err)
+	}
+
+	price := keyAmount * domain.PricePerKey
+
+	orderID, err := b.storage.CreateOrder(storage.CreateOrderParams{
+		Status:    domain.OrderStatusAwaitingPayment,
+		UID:       usr.id,
+		Username:  usr.username,
+		FirstName: usr.firstName,
+		LastName:  usr.lastName,
+		KeyAmount: keyAmount,
+		Price:     price,
+		CreatedAt: now,
+	})
+	if err != nil {
+		return fmt.Errorf("order not created: %w", err)
+	}
+
+	adminKb := &tele.ReplyMarkup{}
+	adminKb.Inline(
+		adminKb.Row(adminKb.Data("Одобрить", stepApproveOrder.String(), orderID.String())),
+		adminKb.Row(adminKb.Data("Отклонить", stepRejectOrder.String(), orderID.String())),
+	)
+
+	_, err = b.tele.Send(recipient(b.adminID), orderCreatedMsg(orderID, price, keyAmount, usr), adminKb)
+	if err != nil {
+		return fmt.Errorf("order not sent to admin: %w", err)
+	}
+
+	qr := &tele.Photo{
+		Caption: fmt.Sprintf("Заказ №%d размещен, к оплате %d₽, оплата по QR коду или кнопке ниже", orderID, price),
+		File:    tele.FromDisk(paymentQR),
+	}
+
+	return c.Send(qr, paymentKeyboard())
+}
+
+// renewOrder triggers when order renew approved.
+// Receives order id from callback, sets new expiration timestamp and returns it to user and admin.
+func (b *Bot) renewOrder(c tele.Context, cb btnCallback) error {
+	oid, err := domain.OrderIDFromString(cb.data)
+	if err != nil {
+		return err
+	}
+
+	if err = b.storage.RenewOrder(oid, domain.OrderTTL); err != nil {
+		return fmt.Errorf("order not renewed: %w", err)
+	}
+
+	order, err := b.storage.GetOrder(oid)
+	if err != nil {
+		return fmt.Errorf("order not found: %w", err)
+	}
+
+	sb := &strings.Builder{}
+
+	_, err = fmt.Fprintf(sb, "Заказ №%d продлен до %s\n\nКлючей %d шт.\nОплачено %d руб.",
+		order.ID, order.ExpiresAt.Time.Format("02.01.2006"), order.KeyAmount, order.Price)
+	if err != nil {
+		return fmt.Errorf("renew msg not written: %w", err)
+	}
+
+	if _, err = b.tele.Send(recipient(order.UID), sb.String()); err != nil {
+		return fmt.Errorf("renew msg not sent to user: %w", err)
+	}
+
+	if _, err = sb.WriteString("\n\n"); err != nil {
+		return fmt.Errorf("\n not written: %w", err)
+	}
+
+	orderUser := user{
+		id:        order.UID,
+		username:  order.Username.String,
+		firstName: order.FirstName.String,
+		lastName:  order.LastName.String,
+	}
+
+	if err = orderUser.write(sb); err != nil {
+		return fmt.Errorf("order user not written: %w", err)
+	}
+
+	return c.Edit(sb.String())
+}
+
+// rejectOrder trigger when admin rejects order renew operation.
+// Closes the order and set status "rejected".
+func (b *Bot) rejectOrder(c tele.Context, cb btnCallback, now time.Time) error {
+	oid, err := domain.OrderIDFromString(cb.data)
+	if err != nil {
+		return err
+	}
+
+	order, err := b.storage.GetOrder(oid)
+	if err != nil {
+		return err
+	}
+
+	if err = b.storage.CloseOrder(oid, domain.OrderStatusRejected, now); err != nil {
+		return fmt.Errorf("order not rejected: %w", err)
+	}
+
+	slog.Info("order rejected", "order", order)
+
+	sb := &strings.Builder{}
+
+	if _, err = fmt.Fprintf(sb, "Заказ №%d на сумму %d руб. отклонен", order.ID, order.Price); err != nil {
+		return fmt.Errorf("order reject title not written: %w", err)
+	}
+
+	orderUser := &user{
+		id:        order.UID,
+		username:  order.Username.String,
+		firstName: order.FirstName.String,
+		lastName:  order.LastName.String,
+	}
+
+	if _, err = b.tele.Send(orderUser, sb.String()); err != nil {
+		return fmt.Errorf("reject msg not sent to user: %w", err)
+	}
+
+	if _, err = sb.WriteString("\n\n"); err != nil {
+		return fmt.Errorf("\n not written on oreder reject: %w", err)
+	}
+
+	if err = orderUser.write(sb); err != nil {
+		return fmt.Errorf("order user not written: %w", err)
+	}
+
+	return c.Edit(sb.String())
 }
 
 // aproveOrder closes order and creates access keys to outline, sends them to user and admin.
