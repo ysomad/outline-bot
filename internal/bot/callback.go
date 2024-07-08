@@ -39,25 +39,27 @@ func parseCallback(data string) (btnCallback, error) {
 func (b *Bot) handleCallback(c tele.Context) error {
 	usr := newUser(c.Chat())
 	telecb := c.Callback()
+	ctx := stdContext(c)
 
 	cb, err := parseCallback(telecb.Data)
 	if err != nil {
 		return err
 	}
 
+	ctx = withCallback(ctx, cb)
 	now := time.Now()
 
-	slog.Info("callback received", "unique", cb.unique, "data", cb.data, "callback_id", telecb.ID)
+	slog.InfoContext(ctx, "callback received")
 
 	switch step(cb.unique) {
 	case stepSelectKeyAmount:
-		return b.selectKeyAmount(c, cb, usr, now)
+		return b.selectKeyAmount(c, ctx, cb, usr, now)
 	case stepApproveOrder:
-		return b.approveOrder(c, cb)
+		return b.approveOrder(c, ctx, cb)
 	case stepOrderRenewApproved:
-		return b.renewOrder(c, cb)
+		return b.renewOrder(c, ctx, cb)
 	case stepRejectOrder, stepRejectOrderRenewal:
-		return b.rejectOrder(c, cb, now)
+		return b.rejectOrder(c, ctx, cb, now)
 	case stepCancel:
 		if err := c.Delete(); err != nil {
 			return fmt.Errorf("step cancel: %w", err)
@@ -71,7 +73,7 @@ func (b *Bot) handleCallback(c tele.Context) error {
 
 // selectKeyAmount triggers after user selected amount of keys to create.
 // Creates order, sends payment details to the user and to admin which have to approve or reject the order.
-func (b *Bot) selectKeyAmount(c tele.Context, cb btnCallback, usr *user, now time.Time) error {
+func (b *Bot) selectKeyAmount(c tele.Context, ctx context.Context, cb btnCallback, usr *user, now time.Time) error {
 	keyAmount, err := strconv.Atoi(cb.data)
 	if err != nil {
 		return err
@@ -97,6 +99,9 @@ func (b *Bot) selectKeyAmount(c tele.Context, cb btnCallback, usr *user, now tim
 		return fmt.Errorf("order not created: %w", err)
 	}
 
+	ctx = withOrderID(ctx, orderID)
+	slog.InfoContext(ctx, "order created by user")
+
 	adminKb := &tele.ReplyMarkup{}
 	adminKb.Inline(
 		adminKb.Row(adminKb.Data("Одобрить", stepApproveOrder.String(), orderID.String())),
@@ -118,17 +123,21 @@ func (b *Bot) selectKeyAmount(c tele.Context, cb btnCallback, usr *user, now tim
 
 // renewOrder triggers when order renew approved.
 // Receives order id from callback, sets new expiration timestamp and returns it to user and admin.
-func (b *Bot) renewOrder(c tele.Context, cb btnCallback) error {
-	oid, err := domain.OrderIDFromString(cb.data)
+func (b *Bot) renewOrder(c tele.Context, ctx context.Context, cb btnCallback) error {
+	orderID, err := domain.OrderIDFromString(cb.data)
 	if err != nil {
-		return err
+		return fmt.Errorf("order id not found in callback data: %w", err)
 	}
 
-	if err = b.storage.RenewOrder(oid, domain.OrderTTL); err != nil {
+	ctx = withOrderID(ctx, orderID)
+
+	if err = b.storage.RenewOrder(orderID, domain.OrderTTL); err != nil {
 		return fmt.Errorf("order not renewed: %w", err)
 	}
 
-	order, err := b.storage.GetOrder(oid)
+	slog.InfoContext(ctx, "order renewed", "ttl", domain.OrderTTL)
+
+	order, err := b.storage.GetOrder(orderID)
 	if err != nil {
 		return fmt.Errorf("order not found: %w", err)
 	}
@@ -141,12 +150,13 @@ func (b *Bot) renewOrder(c tele.Context, cb btnCallback) error {
 		return fmt.Errorf("renew msg not written: %w", err)
 	}
 
+	// send to user
 	if _, err = b.tele.Send(recipient(order.UID), sb.String()); err != nil {
 		return fmt.Errorf("renew msg not sent to user: %w", err)
 	}
 
 	if _, err = sb.WriteString("\n\n"); err != nil {
-		return fmt.Errorf("\n not written: %w", err)
+		return fmt.Errorf("\n not written on renew: %w", err)
 	}
 
 	orderUser := user{
@@ -160,27 +170,30 @@ func (b *Bot) renewOrder(c tele.Context, cb btnCallback) error {
 		return fmt.Errorf("order user not written: %w", err)
 	}
 
+	// sent to admin
 	return c.Edit(sb.String())
 }
 
 // rejectOrder trigger when admin rejects order renew operation.
 // Closes the order and set status "rejected".
-func (b *Bot) rejectOrder(c tele.Context, cb btnCallback, now time.Time) error {
-	oid, err := domain.OrderIDFromString(cb.data)
+func (b *Bot) rejectOrder(c tele.Context, ctx context.Context, cb btnCallback, now time.Time) error {
+	orderID, err := domain.OrderIDFromString(cb.data)
 	if err != nil {
-		return err
+		return fmt.Errorf("order id not found in callback data on reject: %w", err)
 	}
 
-	order, err := b.storage.GetOrder(oid)
+	ctx = withOrderID(ctx, orderID)
+
+	order, err := b.storage.GetOrder(orderID)
 	if err != nil {
-		return err
+		return fmt.Errorf("order not found on reject: %w", err)
 	}
 
-	if err = b.storage.CloseOrder(oid, domain.OrderStatusRejected, now); err != nil {
-		return fmt.Errorf("order not rejected: %w", err)
+	if err = b.storage.CloseOrder(orderID, domain.OrderStatusRejected, now); err != nil {
+		return fmt.Errorf("order not closed on reject: %w", err)
 	}
 
-	slog.Info("order rejected", "order", order)
+	slog.InfoContext(ctx, "order rejected by admin")
 
 	sb := &strings.Builder{}
 
@@ -210,38 +223,47 @@ func (b *Bot) rejectOrder(c tele.Context, cb btnCallback, now time.Time) error {
 	return c.Edit(sb.String())
 }
 
-// aproveOrder closes order and creates access keys to outline, sends them to user and admin.
-func (b *Bot) approveOrder(c tele.Context, cb btnCallback) error {
+// aproveOrder approved order and creates access keys to outline, sends them to user and admin.
+// Triggers after admin approved order in inline keyboard.
+func (b *Bot) approveOrder(c tele.Context, ctx context.Context, cb btnCallback) error {
 	orderID, err := domain.OrderIDFromString(cb.data)
 	if err != nil {
 		return err
 	}
+
+	ctx = withOrderID(ctx, orderID)
 
 	order, err := b.storage.GetOrder(orderID)
 	if err != nil {
 		return err
 	}
 
-	keys := make([]storage.Key, order.KeyAmount)
+	ctx = withUser(ctx, order.UID, order.Username.String)
+
 	now := time.Now()
 	gen := namegenerator.NewNameGenerator(now.UnixNano())
-	exp := now.Add(domain.OrderTTL)
+
+	keys := make([]storage.Key, order.KeyAmount)
+	expiresAt := now.Add(domain.OrderTTL)
 
 	sb := &strings.Builder{}
 
-	if _, err = fmt.Fprintf(sb, "Заказ №%d одобрен (до %s)\n", order.ID, exp.Format("02.01.2006")); err != nil {
+	_, err = fmt.Fprintf(sb, "Заказ №%d одобрен (до %s)\n", orderID, expiresAt.Format("02.01.2006"))
+	if err != nil {
 		return fmt.Errorf("order approved title not written: %w", err)
 	}
 
 	for i := range order.KeyAmount {
 		keyName := gen.Generate()
 
-		key, err := b.outline.AccessKeysPost(context.Background(), outline.NewOptAccessKeysPostReq(outline.AccessKeysPostReq{
+		key, err := b.outline.AccessKeysPost(ctx, outline.NewOptAccessKeysPostReq(outline.AccessKeysPostReq{
 			Name: outline.NewOptString(keyName),
 		}))
 		if err != nil {
-			return fmt.Errorf("key not created: %w", err)
+			return fmt.Errorf("outline key not created: %w", err)
 		}
+
+		slog.InfoContext(ctx, "created key in outline", "key_id", key.ID, "key_name", key.Name)
 
 		_, err = fmt.Fprintf(sb, "\n%s %s\n```\n%s\n```", key.ID, key.Name.Value, key.AccessUrl.Value)
 		if err != nil {
@@ -255,14 +277,12 @@ func (b *Bot) approveOrder(c tele.Context, cb btnCallback) error {
 		}
 	}
 
-	err = b.storage.ApproveOrder(storage.ApproveOrderParams{
-		OID:       orderID,
-		Keys:      keys,
-		ExpiresAt: exp,
-	})
+	err = b.storage.ApproveOrder(orderID, keys, expiresAt)
 	if err != nil {
 		return fmt.Errorf("order not approved: %w", err)
 	}
+
+	slog.InfoContext(ctx, "order approved by admin")
 
 	// to write user from order to msg
 	usr := &user{
@@ -274,7 +294,7 @@ func (b *Bot) approveOrder(c tele.Context, cb btnCallback) error {
 
 	// send to user
 	if _, err := b.tele.Send(usr, sb.String(), tele.ModeMarkdown); err != nil {
-		return fmt.Errorf("keys not sent to user: %w", err)
+		return fmt.Errorf("order approve msg not sent to user: %w", err)
 	}
 
 	// write info about user for admin msg

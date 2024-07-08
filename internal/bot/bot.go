@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -11,6 +12,7 @@ import (
 	tele "gopkg.in/telebot.v3"
 	"gopkg.in/telebot.v3/middleware"
 
+	"github.com/ysomad/outline-bot/internal/config"
 	"github.com/ysomad/outline-bot/internal/domain"
 	"github.com/ysomad/outline-bot/internal/outline"
 	"github.com/ysomad/outline-bot/internal/storage"
@@ -29,16 +31,26 @@ type Bot struct {
 	storage *storage.Storage
 }
 
-type Params struct {
-	Telebot *tele.Bot
-	AdminID int64
-	State   *expirable.LRU[string, State]
-	Outline *outline.Client
-	Storage *storage.Storage
-}
+func New(conf config.TG, state *expirable.LRU[string, State], outline *outline.Client, storage *storage.Storage) (b *Bot, err error) {
+	b = &Bot{
+		adminID: conf.Admin,
+		storage: storage,
+		outline: outline,
+		state:   state,
+	}
 
-func New(p *Params) (*Bot, error) {
-	if err := p.Telebot.SetCommands([]tele.Command{
+	b.tele, err = tele.NewBot(tele.Settings{
+		Token:   conf.Token,
+		OnError: b.handleError,
+		Client:  &http.Client{Timeout: conf.HTTPTimeout},
+		Poller:  &tele.LongPoller{Timeout: conf.PollerTimeout},
+		Verbose: conf.Verbose,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("telebot not created: %w", err)
+	}
+
+	err = b.tele.SetCommands([]tele.Command{
 		{
 			Text:        "order",
 			Description: "Разместить заказ на оплату",
@@ -47,19 +59,13 @@ func New(p *Params) (*Bot, error) {
 			Text:        "profile",
 			Description: "Узнать статус подписки",
 		},
-	}); err != nil {
-		return nil, fmt.Errorf("commands not set: %w", err)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("telebot commands not set: %w", err)
 	}
 
-	p.Telebot.Use(middleware.Recover())
-
-	b := &Bot{
-		tele:    p.Telebot,
-		adminID: p.AdminID,
-		storage: p.Storage,
-		outline: p.Outline,
-		state:   p.State,
-	}
+	b.tele.Use(middleware.Recover())
+	b.tele.Use(contextMiddleware())
 
 	b.tele.Handle("/start", b.handleStart)
 	b.tele.Handle("/order", b.handleOrder)
@@ -71,6 +77,10 @@ func New(p *Params) (*Bot, error) {
 	adminOnly.Handle("/renew", b.handleRenew)
 
 	return b, nil
+}
+
+func (b *Bot) handleError(err error, c tele.Context) {
+	slog.ErrorContext(stdContext(c), "unhandled error happen", "cause", err.Error())
 }
 
 func (b *Bot) Start() {
@@ -194,22 +204,25 @@ func (b *Bot) handleRenew(c tele.Context) error {
 		return fmt.Errorf("order not renewed: %w", err)
 	}
 
-	o, err := b.storage.GetOrder(oid)
+	order, err := b.storage.GetOrder(oid)
 	if err != nil {
 		return fmt.Errorf("order not found: %w", err)
 	}
 
-	slog.Info("order renewed by admin", "oid", n)
+	ctx := stdContext(c)
+	ctx = withUser(ctx, order.UID, order.Username.String)
+
+	slog.InfoContext(ctx, "order renewed by admin", "order_id", oid)
 
 	sb := &strings.Builder{}
 
 	_, err = fmt.Fprintf(sb, "Заказ №%d продлен до %s\n\nКлючей %d шт.\nОплачено %d руб.",
-		o.ID, o.ExpiresAt.Time.Format("02.01.2006"), o.KeyAmount, o.Price)
+		order.ID, order.ExpiresAt.Time.Format("02.01.2006"), order.KeyAmount, order.Price)
 	if err != nil {
 		return fmt.Errorf("renew msg not written: %w", err)
 	}
 
-	if _, err = b.tele.Send(recipient(o.UID), sb.String()); err != nil {
+	if _, err = b.tele.Send(recipient(order.UID), sb.String()); err != nil {
 		return fmt.Errorf("renew msg not sent to user: %w", err)
 	}
 
@@ -218,10 +231,10 @@ func (b *Bot) handleRenew(c tele.Context) error {
 	}
 
 	usr := user{
-		id:        o.UID,
-		username:  o.Username.String,
-		firstName: o.FirstName.String,
-		lastName:  o.LastName.String,
+		id:        order.UID,
+		username:  order.Username.String,
+		firstName: order.FirstName.String,
+		lastName:  order.LastName.String,
 	}
 
 	if err = usr.write(sb); err != nil {

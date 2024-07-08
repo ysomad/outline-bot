@@ -116,18 +116,13 @@ type Key struct {
 	URL  string
 }
 
-type ApproveOrderParams struct {
-	OID       domain.OrderID
-	Keys      []Key
-	ExpiresAt time.Time
-}
-
-func (s *Storage) ApproveOrder(p ApproveOrderParams) error {
+// ApprovedOrder approves order and creates key for the order.
+func (s *Storage) ApproveOrder(oid domain.OrderID, keys []Key, expiresAt time.Time) error {
 	sql1, args1, err := s.sq.
 		Update("orders").
-		Set("expires_at", p.ExpiresAt.UTC()).
+		Set("expires_at", expiresAt.UTC()).
 		Set("status", domain.OrderStatusApproved).
-		Where(sq.Eq{"id": p.OID}).
+		Where(sq.Eq{"id": oid}).
 		ToSql()
 	if err != nil {
 		return err
@@ -137,8 +132,8 @@ func (s *Storage) ApproveOrder(p ApproveOrderParams) error {
 		Insert("access_keys").
 		Columns("id, name, url, order_id")
 
-	for _, k := range p.Keys {
-		b = b.Values(k.ID, k.Name, k.URL, p.OID)
+	for _, k := range keys {
+		b = b.Values(k.ID, k.Name, k.URL, oid)
 	}
 
 	sql2, args2, err := b.ToSql()
@@ -318,6 +313,26 @@ WHERE id = ?
 
 	if _, err := res.RowsAffected(); err != nil {
 		return fmt.Errorf("rows affected: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Storage) DeleteOrder(oid domain.OrderID) error {
+	sql1, args1, err := s.sq.
+		Delete("acccess_keys").
+		Where(sq.Eq{"order_id": oid}).
+		ToSql()
+	if err != nil {
+		return err
+	}
+
+	sql2, args2, err := s.sq.
+		Delete("orders").
+		Where(sq.Eq{"id": oid}).
+		ToSql()
+	if err != nil {
+		return err
 	}
 
 	return nil

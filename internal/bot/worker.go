@@ -119,6 +119,8 @@ func (b *Bot) notifyExpiringOrders() error {
 			return fmt.Errorf("not sent to user: %w", err)
 		}
 
+		slog.Info("expiring order sent to user", "user_id", order.user.id, "order_id", order.id)
+
 		sb.Reset()
 
 		if _, err = fmt.Fprintf(sb,
@@ -141,6 +143,8 @@ func (b *Bot) notifyExpiringOrders() error {
 		if _, err = b.tele.Send(recipient(b.adminID), sb.String(), kb); err != nil {
 			return fmt.Errorf("renewal msg not sent to admin: %w", err)
 		}
+
+		slog.Info("expiring order sent to admin", "order_id", order.id)
 	}
 
 	return nil

@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -17,42 +16,26 @@ import (
 	"github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/ilyakaznacheev/cleanenv"
 	_ "github.com/mattn/go-sqlite3"
-	tele "gopkg.in/telebot.v3"
 
 	"github.com/ysomad/outline-bot/internal/bot"
 	"github.com/ysomad/outline-bot/internal/config"
 	"github.com/ysomad/outline-bot/internal/outline"
+	"github.com/ysomad/outline-bot/internal/slogx"
 	"github.com/ysomad/outline-bot/internal/storage"
 )
-
-func slogFatal(msg string, args ...any) {
-	slog.Error(msg, args...)
-	os.Exit(1)
-}
-
-func parseLogLevel(s string) slog.Level {
-	switch strings.ToLower(s) {
-	case "debug":
-		return slog.LevelDebug
-	case "warn", "warning":
-		return slog.LevelWarn
-	case "error", "err":
-		return slog.LevelError
-	default:
-		return slog.LevelInfo
-	}
-}
 
 func main() {
 	var conf config.Config
 
 	if err := cleanenv.ReadEnv(&conf); err != nil {
-		slogFatal(fmt.Sprintf("config not parsed: %s", err.Error()))
+		slogx.Fatal(fmt.Sprintf("config not parsed: %s", err.Error()))
 	}
 
 	handler := slog.Handler(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: parseLogLevel(conf.LogLevel),
+		Level: slogx.ParseLevel(conf.LogLevel),
 	}))
+
+	handler = bot.NewSlogMiddleware(handler)
 
 	slog.SetDefault(slog.New(handler))
 
@@ -60,11 +43,11 @@ func main() {
 
 	db, err := sql.Open("sqlite3", "db.db")
 	if err != nil {
-		slogFatal(fmt.Sprintf("db not opened: %s", err.Error()))
+		slogx.Fatal(fmt.Sprintf("db not opened: %s", err.Error()))
 	}
 
 	if err = db.Ping(); err != nil {
-		slogFatal(fmt.Sprintf("ping failed: %s", err.Error()))
+		slogx.Fatal(fmt.Sprintf("ping failed: %s", err.Error()))
 	}
 
 	stateLRU := expirable.NewLRU[string, bot.State](100, nil, time.Hour)
@@ -77,33 +60,14 @@ func main() {
 		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
 	}
 
-	outlineCli, err := outline.NewClient(conf.Outline.URL, outline.WithClient(outlineHttpCli))
+	outlineClient, err := outline.NewClient(conf.Outline.URL, outline.WithClient(outlineHttpCli))
 	if err != nil {
-		slogFatal(err.Error())
+		slogx.Fatal(err.Error())
 	}
 
-	telebot, err := tele.NewBot(tele.Settings{
-		Token: conf.TG.Token,
-		OnError: func(err error, c tele.Context) {
-			slog.Error(fmt.Sprintf("unhandled error: %s", err.Error()))
-		},
-		Client:  &http.Client{Timeout: conf.TG.HTTPTimeout},
-		Poller:  &tele.LongPoller{Timeout: conf.TG.PollerTimeout},
-		Verbose: conf.TG.Verbose,
-	})
+	bot, err := bot.New(conf.TG, stateLRU, outlineClient, storage)
 	if err != nil {
-		slogFatal(fmt.Sprintf("telebot not created: %s", err.Error()))
-	}
-
-	bot, err := bot.New(&bot.Params{
-		Telebot: telebot,
-		AdminID: conf.TG.Admin,
-		State:   stateLRU,
-		Outline: outlineCli,
-		Storage: storage,
-	})
-	if err != nil {
-		slogFatal(fmt.Sprintf("bot not initialized: %s", err.Error()))
+		slogx.Fatal(fmt.Sprintf("bot not initialized: %s", err.Error()))
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
