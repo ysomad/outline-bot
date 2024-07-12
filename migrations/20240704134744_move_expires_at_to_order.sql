@@ -13,8 +13,10 @@ SET expires_at = (
 CREATE TABLE access_keys_new (
     id varchar(64) PRIMARY KEY NOT NULL,
     name varchar(32) NOT NULL,
-    order_id int REFERENCES orders (id) NOT NULL,
-    url text NOT NULL
+    order_id int NOT NULL,
+    url text NOT NULL,
+
+    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE RESTRICT
 );
 
 INSERT INTO access_keys_new (id, name, order_id, url)

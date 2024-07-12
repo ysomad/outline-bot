@@ -41,7 +41,7 @@ func main() {
 
 	slog.Debug("loaded config", "config", conf)
 
-	db, err := sql.Open("sqlite3", "db.db")
+	db, err := sql.Open("sqlite3", "db.db?_foreign_keys=on")
 	if err != nil {
 		slogx.Fatal(fmt.Sprintf("db not opened: %s", err.Error()))
 	}
