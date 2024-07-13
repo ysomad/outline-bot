@@ -298,8 +298,13 @@ func (b *Bot) approveOrder(c tele.Context, ctx context.Context, cb btnCallback) 
 	}
 
 	// write info about user for admin msg
-	sb.WriteString("\n")
-	usr.write(sb)
+	if _, err := sb.WriteString("\n"); err != nil {
+		return fmt.Errorf("\n not written: %w", err)
+	}
+
+	if err := usr.write(sb); err != nil {
+		return fmt.Errorf("user not written: %w", err)
+	}
 
 	// send to admin
 	if err := c.Edit(sb.String(), "", tele.ModeMarkdown); err != nil {
