@@ -96,14 +96,10 @@ func (b *Bot) notifyExpiringOrders() error {
 		}
 
 		for i, k := range keys {
-			if _, err = fmt.Fprintf(sb, "%s %s", k.ID, k.Name); err != nil {
-				return fmt.Errorf("key msg not written: %w", err)
-			}
+			fmt.Fprintf(sb, "%s %s", k.ID, k.Name)
 
 			if i != len(keys)-1 {
-				if _, err = sb.WriteString(", "); err != nil {
-					return fmt.Errorf(", not writtern: %w", err)
-				}
+				sb.WriteString(", ")
 			}
 		}
 
@@ -123,15 +119,8 @@ func (b *Bot) notifyExpiringOrders() error {
 
 		sb.Reset()
 
-		if _, err = fmt.Fprintf(sb,
-			"Заказ №%d истекает %s\n\nК оплате %d руб.\nКлючей %d шт.\n\n",
-			order.id, order.expiresAt.Format("02.01.2006"), order.price, order.keyAmount); err != nil {
-			return fmt.Errorf("order title not written: %w", err)
-		}
-
-		if err = order.user.write(sb); err != nil {
-			return fmt.Errorf("user not written to builder: %w", err)
-		}
+		fmt.Fprintf(sb, "Заказ №%d истекает %s\n\nК оплате %d руб.\nКлючей %d шт.\n\n", order.id, order.expiresAt.Format("02.01.2006"), order.price, order.keyAmount)
+		order.user.write(sb)
 
 		kb := &tele.ReplyMarkup{}
 		kb.Inline(
@@ -176,12 +165,7 @@ func (b *Bot) deactivateExpiredKeys() error {
 
 		slog.Info("order expired", "oid", oid)
 
-		_, err = fmt.Fprintf(sb,
-			"Заказ №%d истек, деактивированы ключи %d шт. на сумму %d руб.\n\n",
-			oid, order.keyAmount, order.price)
-		if err != nil {
-			return fmt.Errorf("expired order title not written: %w", err)
-		}
+		fmt.Fprintf(sb, "Заказ №%d истек, деактивированы ключи %d шт. на сумму %d руб.\n\n", oid, order.keyAmount, order.price)
 
 		for i, k := range keys {
 			_, err := b.outline.AccessKeysIDDelete(context.Background(), outline.AccessKeysIDDeleteParams{ID: k.ID})
@@ -189,16 +173,10 @@ func (b *Bot) deactivateExpiredKeys() error {
 				return fmt.Errorf("key with id %s not deleted from outline: %w", k.ID, err)
 			}
 
-			_, err = fmt.Fprintf(sb, "%s %s", k.ID, k.Name)
-			if err != nil {
-				return fmt.Errorf("expired key not written: %w", err)
-			}
+			fmt.Fprintf(sb, "%s %s", k.ID, k.Name)
 
 			if i != len(keys)-1 {
-				_, err = sb.WriteString(", ")
-				if err != nil {
-					return fmt.Errorf(", not written: %w", err)
-				}
+				sb.WriteString(", ")
 			}
 		}
 
@@ -206,13 +184,8 @@ func (b *Bot) deactivateExpiredKeys() error {
 			return fmt.Errorf("expired order msg not sent to user: %w", err)
 		}
 
-		if _, err := sb.WriteString("\n\n"); err != nil {
-			return fmt.Errorf("\n\n not written: %w", err)
-		}
-
-		if err := order.user.write(sb); err != nil {
-			return fmt.Errorf("user not written: %w", err)
-		}
+		sb.WriteString("\n\n")
+		order.user.write(sb)
 
 		if _, err := b.tele.Send(recipient(b.adminID), sb.String()); err != nil {
 			return fmt.Errorf("expired order not sent to admin: %w", err)

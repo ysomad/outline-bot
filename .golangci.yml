@@ -1,0 +1,14 @@
+linters:
+  enable-all: true
+  disable:
+    - gomnd
+    - execinquery
+    - testableexamples
+    - exhaustruct
+    - ginkgolinter
+    - gofmt
+    - loggercheck
+    - maintidx
+    - zerologlint
+    - testpackage
+    - revive

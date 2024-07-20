@@ -144,20 +144,14 @@ func (b *Bot) renewOrder(c tele.Context, ctx context.Context, cb btnCallback) er
 
 	sb := &strings.Builder{}
 
-	_, err = fmt.Fprintf(sb, "Заказ №%d продлен до %s\n\nКлючей %d шт.\nОплачено %d руб.",
-		order.ID, order.ExpiresAt.Time.Format("02.01.2006"), order.KeyAmount, order.Price)
-	if err != nil {
-		return fmt.Errorf("renew msg not written: %w", err)
-	}
+	fmt.Fprintf(sb, "Заказ №%d продлен до %s\n\nКлючей %d шт.\nОплачено %d руб.", order.ID, order.ExpiresAt.Time.Format("02.01.2006"), order.KeyAmount, order.Price)
 
 	// send to user
 	if _, err = b.tele.Send(recipient(order.UID), sb.String()); err != nil {
 		return fmt.Errorf("renew msg not sent to user: %w", err)
 	}
 
-	if _, err = sb.WriteString("\n\n"); err != nil {
-		return fmt.Errorf("\n not written on renew: %w", err)
-	}
+	sb.WriteString("\n\n")
 
 	orderUser := user{
 		id:        order.UID,
@@ -166,9 +160,7 @@ func (b *Bot) renewOrder(c tele.Context, ctx context.Context, cb btnCallback) er
 		lastName:  order.LastName.String,
 	}
 
-	if err = orderUser.write(sb); err != nil {
-		return fmt.Errorf("order user not written: %w", err)
-	}
+	orderUser.write(sb)
 
 	// sent to admin
 	return c.Edit(sb.String())
@@ -197,9 +189,7 @@ func (b *Bot) rejectOrder(c tele.Context, ctx context.Context, cb btnCallback, n
 
 	sb := &strings.Builder{}
 
-	if _, err = fmt.Fprintf(sb, "Заказ №%d на сумму %d руб. отклонен", order.ID, order.Price); err != nil {
-		return fmt.Errorf("order reject title not written: %w", err)
-	}
+	fmt.Fprintf(sb, "Заказ №%d на сумму %d руб. отклонен", order.ID, order.Price)
 
 	orderUser := &user{
 		id:        order.UID,
@@ -212,13 +202,8 @@ func (b *Bot) rejectOrder(c tele.Context, ctx context.Context, cb btnCallback, n
 		return fmt.Errorf("reject msg not sent to user: %w", err)
 	}
 
-	if _, err = sb.WriteString("\n\n"); err != nil {
-		return fmt.Errorf("\n not written on oreder reject: %w", err)
-	}
-
-	if err = orderUser.write(sb); err != nil {
-		return fmt.Errorf("order user not written: %w", err)
-	}
+	sb.WriteString("\n\n")
+	orderUser.write(sb)
 
 	return c.Edit(sb.String())
 }
@@ -248,10 +233,7 @@ func (b *Bot) approveOrder(c tele.Context, ctx context.Context, cb btnCallback) 
 
 	sb := &strings.Builder{}
 
-	_, err = fmt.Fprintf(sb, "Заказ №%d одобрен (до %s)\n", orderID, expiresAt.Format("02.01.2006"))
-	if err != nil {
-		return fmt.Errorf("order approved title not written: %w", err)
-	}
+	fmt.Fprintf(sb, "Заказ №%d одобрен (до %s)\n", orderID, expiresAt.Format("02.01.2006"))
 
 	for i := range order.KeyAmount {
 		keyName := gen.Generate()
@@ -265,10 +247,7 @@ func (b *Bot) approveOrder(c tele.Context, ctx context.Context, cb btnCallback) 
 
 		slog.InfoContext(ctx, "created key in outline", "key_id", key.ID, "key_name", key.Name)
 
-		_, err = fmt.Fprintf(sb, "\n%s %s\n```\n%s\n```", key.ID, key.Name.Value, key.AccessUrl.Value)
-		if err != nil {
-			return err
-		}
+		fmt.Fprintf(sb, "\n%s %s\n```\n%s\n```", key.ID, key.Name.Value, key.AccessUrl.Value)
 
 		keys[i] = storage.Key{
 			ID:   key.ID,
@@ -297,14 +276,10 @@ func (b *Bot) approveOrder(c tele.Context, ctx context.Context, cb btnCallback) 
 		return fmt.Errorf("order approve msg not sent to user: %w", err)
 	}
 
-	// write info about user for admin msg
-	if _, err := sb.WriteString("\n"); err != nil {
-		return fmt.Errorf("\n not written: %w", err)
-	}
+	sb.WriteString("\n")
+	usr.write(sb)
 
-	if err := usr.write(sb); err != nil {
-		return fmt.Errorf("user not written: %w", err)
-	}
+	slog.InfoContext(ctx, "msg to admin", "msg", sb.String())
 
 	// send to admin
 	if err := c.Edit(sb.String(), "", tele.ModeMarkdown); err != nil {
@@ -315,7 +290,6 @@ func (b *Bot) approveOrder(c tele.Context, ctx context.Context, cb btnCallback) 
 }
 
 func orderCreatedMsg(oid domain.OrderID, price, keys int, usr *user) string {
-	// TODO: handle errors!!
 	sb := &strings.Builder{}
 	fmt.Fprintf(sb, "Новый заказ №%d\n\nК оплате: %d₽\nКлючей: %d\n\n", oid, price, keys)
 	usr.write(sb)

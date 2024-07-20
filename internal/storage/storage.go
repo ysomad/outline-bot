@@ -317,23 +317,3 @@ WHERE id = ?
 
 	return nil
 }
-
-// func (s *Storage) DeleteOrder(oid domain.OrderID) error {
-// 	sql1, args1, err := s.sq.
-// 		Delete("acccess_keys").
-// 		Where(sq.Eq{"order_id": oid}).
-// 		ToSql()
-// 	if err != nil {
-// 		return err
-// 	}
-//
-// 	sql2, args2, err := s.sq.
-// 		Delete("orders").
-// 		Where(sq.Eq{"id": oid}).
-// 		ToSql()
-// 	if err != nil {
-// 		return err
-// 	}
-//
-// 	return nil
-// }

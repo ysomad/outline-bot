@@ -166,20 +166,11 @@ func (b *Bot) handleProfile(c tele.Context) error {
 		for _, k := range groupedKeys[oid] {
 			// print order title only once
 			if !titlePrinted {
-				_, err = fmt.Fprintf(sb,
-					"\n\n\nЗаказ №%d\nДействует до %s\nСтоимость продления %d руб.\n",
-					k.OrderID, k.ExpiresAt.Format("02.01.2006"), k.Price)
-				if err != nil {
-					return err
-				}
-
+				fmt.Fprintf(sb, "\n\n\nЗаказ №%d\nДействует до %s\nСтоимость продления %d руб.\n", k.OrderID, k.ExpiresAt.Format("02.01.2006"), k.Price)
 				titlePrinted = true
 			}
 
-			_, err = fmt.Fprintf(sb, "\n%s %s```%s```", k.ID, k.Name, k.URL)
-			if err != nil {
-				return err
-			}
+			fmt.Fprintf(sb, "\n%s %s```%s```", k.ID, k.Name, k.URL)
 		}
 	}
 
@@ -216,19 +207,13 @@ func (b *Bot) handleRenew(c tele.Context) error {
 
 	sb := &strings.Builder{}
 
-	_, err = fmt.Fprintf(sb, "Заказ №%d продлен до %s\n\nКлючей %d шт.\nОплачено %d руб.",
-		order.ID, order.ExpiresAt.Time.Format("02.01.2006"), order.KeyAmount, order.Price)
-	if err != nil {
-		return fmt.Errorf("renew msg not written: %w", err)
-	}
+	fmt.Fprintf(sb, "Заказ №%d продлен до %s\n\nКлючей %d шт.\nОплачено %d руб.", order.ID, order.ExpiresAt.Time.Format("02.01.2006"), order.KeyAmount, order.Price)
 
 	if _, err = b.tele.Send(recipient(order.UID), sb.String()); err != nil {
 		return fmt.Errorf("renew msg not sent to user: %w", err)
 	}
 
-	if _, err = sb.WriteString("\n\n"); err != nil {
-		return fmt.Errorf("\n not written: %w", err)
-	}
+	sb.WriteString("\n\n")
 
 	usr := user{
 		id:        order.UID,
@@ -237,9 +222,7 @@ func (b *Bot) handleRenew(c tele.Context) error {
 		lastName:  order.LastName.String,
 	}
 
-	if err = usr.write(sb); err != nil {
-		return fmt.Errorf("usr not written: %w", err)
-	}
+	usr.write(sb)
 
 	return c.Send(sb.String())
 }

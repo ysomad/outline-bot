@@ -38,30 +38,15 @@ func (u *user) Recipient() string {
 	return u.ID()
 }
 
-func (u *user) write(sb *strings.Builder) error {
-	if _, err := fmt.Fprintf(sb, "ID: %d", u.id); err != nil {
-		return err
-	}
-
+func (u *user) write(sb *strings.Builder) {
+	fmt.Fprintf(sb, "ID: %d", u.id)
 	if u.username != "" {
-		_, err := fmt.Fprintf(sb, "\nЛогин: @%s", u.username)
-		if err != nil {
-			return err
-		}
+		fmt.Fprintf(sb, "\nЛогин: @%s", u.username)
 	}
-
 	if u.firstName != "" {
-		_, err := fmt.Fprintf(sb, "\nИмя: %s", u.firstName)
-		if err != nil {
-			return err
-		}
+		fmt.Fprintf(sb, "\nИмя: %s", u.firstName)
 	}
 	if u.lastName != "" {
-		_, err := fmt.Fprintf(sb, "\nФамилия: %s", u.lastName)
-		if err != nil {
-			return err
-		}
+		fmt.Fprintf(sb, "\nФамилия: %s", u.lastName)
 	}
-
-	return nil
 }
