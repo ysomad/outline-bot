@@ -199,7 +199,7 @@ func (b *Bot) rejectOrder(c tele.Context, ctx context.Context, cb btnCallback, n
 	}
 
 	if _, err = b.tele.Send(orderUser, sb.String()); err != nil {
-		return fmt.Errorf("reject msg not sent to user: %w", err)
+		slog.WarnContext(ctx, "reject msg not sent to user", "cause", err.Error())
 	}
 
 	sb.WriteString("\n\n")

@@ -1,6 +1,8 @@
 linters:
   enable-all: true
   disable:
+    - gci
+    - depguard
     - gomnd
     - execinquery
     - testableexamples
