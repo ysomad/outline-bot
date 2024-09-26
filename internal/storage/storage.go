@@ -169,11 +169,12 @@ type ActiveKey struct {
 	ExpiresAt time.Time
 	OrderID   domain.OrderID
 	Price     int
+	UID       int64
 }
 
 func (s *Storage) ListActiveUserKeys(uid int64) ([]ActiveKey, error) {
 	sql, args, err := s.sq.
-		Select("ak.id, ak.url, o.expires_at, ak.name, o.id, o.price").
+		Select("ak.id, ak.url, o.expires_at, ak.name, o.id, o.price, o.uid").
 		From("access_keys ak").
 		InnerJoin("orders o ON ak.order_id = o.id").
 		Where(sq.Eq{"o.uid": uid}).
@@ -196,7 +197,7 @@ func (s *Storage) ListActiveUserKeys(uid int64) ([]ActiveKey, error) {
 	for rows.Next() {
 		k := ActiveKey{}
 
-		if err := rows.Scan(&k.ID, &k.URL, &k.ExpiresAt, &k.Name, &k.OrderID, &k.Price); err != nil {
+		if err := rows.Scan(&k.ID, &k.URL, &k.ExpiresAt, &k.Name, &k.OrderID, &k.Price, &k.UID); err != nil {
 			return nil, err
 		}
 
@@ -313,6 +314,99 @@ WHERE id = ?
 
 	if _, err := res.RowsAffected(); err != nil {
 		return fmt.Errorf("rows affected: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Storage) AllActiveKeys() ([]ActiveKey, error) {
+	sql, args, err := s.sq.
+		Select("ak.id, ak.url, o.expires_at, ak.name, o.id, o.price").
+		From("access_keys ak").
+		InnerJoin("orders o ON ak.order_id = o.id").
+		Where(sq.Lt{"o.expires_at": "current_timestamp"}).
+		Where(sq.Eq{"o.closed_at": nil}).
+		OrderBy("ak.id").
+		ToSql()
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := s.db.Query(sql, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query: %w", err)
+	}
+	defer rows.Close()
+
+	var keys []ActiveKey
+
+	for rows.Next() {
+		k := ActiveKey{}
+
+		if err := rows.Scan(&k.ID, &k.URL, &k.ExpiresAt, &k.Name, &k.OrderID, &k.Price); err != nil {
+			return nil, err
+		}
+
+		keys = append(keys, k)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows: %w", err)
+	}
+
+	return keys, nil
+}
+
+type ActiveOrder struct {
+	ID        domain.OrderID
+	UID       int64
+	KeyAmount int
+	ExpiresAt sql.NullTime
+}
+
+func (s *Storage) ListActiveOrders() ([]ActiveOrder, error) {
+	sql, args, err := s.sq.
+		Select("id,key_amount,uid,expires_at").
+		From("orders").
+		Where(sq.Eq{"status": domain.OrderStatusApproved}).
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("builder: %w", err)
+	}
+
+	rows, err := s.db.Query(sql, args...)
+	if err != nil {
+		return nil, fmt.Errorf("quiery: %w", err)
+	}
+	defer rows.Close()
+
+	var orders []ActiveOrder
+
+	for rows.Next() {
+		o := ActiveOrder{}
+
+		if err := rows.Scan(&o.ID, &o.KeyAmount, &o.UID, &o.ExpiresAt); err != nil {
+			return nil, fmt.Errorf("scan: %w", err)
+		}
+
+		orders = append(orders, o)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows: %w", err)
+	}
+
+	return orders, nil
+}
+
+func (s *Storage) DeteleAllKeys() error {
+	sql, args, err := s.sq.Delete("access_keys").ToSql()
+	if err != nil {
+		return fmt.Errorf("builder: %w", err)
+	}
+
+	if _, err := s.db.Exec(sql, args...); err != nil {
+		return fmt.Errorf("exec: %w", err)
 	}
 
 	return nil

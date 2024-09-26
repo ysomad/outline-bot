@@ -71,10 +71,12 @@ func New(conf config.TG, state *expirable.LRU[string, State], outline *outline.C
 	b.tele.Handle("/order", b.handleOrder)
 	b.tele.Handle("/profile", b.handleProfile)
 	b.tele.Handle(tele.OnCallback, b.handleCallback)
+	b.tele.Handle(tele.OnText, b.handleText)
 
 	adminOnly := b.tele.Group()
 	adminOnly.Use(adminMiddleware(b.adminID))
 	adminOnly.Handle("/renew", b.handleRenew)
+	adminOnly.Handle("/migrate", b.handleMigration)
 
 	return b, nil
 }
@@ -225,4 +227,10 @@ func (b *Bot) handleRenew(c tele.Context) error {
 	usr.write(sb)
 
 	return c.Send(sb.String())
+}
+
+func (b *Bot) handleMigration(c tele.Context) error {
+	usr := newUser(c.Chat())
+	b.state.Add(usr.ID(), State{step: stepMigrateKeys.String()})
+	return c.Send("Отправь мне новый Management API URL из Outline Manager")
 }

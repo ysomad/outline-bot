@@ -11,6 +11,8 @@ const (
 
 	stepOrderRenewApproved step = "renew_order_approved"
 	stepRejectOrderRenewal step = "reject_order_renewal"
+
+	stepMigrateKeys step = "migrate_keys"
 )
 
 func (s step) String() string { return string(s) }
