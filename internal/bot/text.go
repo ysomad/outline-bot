@@ -82,6 +82,8 @@ func (b *Bot) handleText(c tele.Context) error {
 				}
 			}
 
+			fmt.Fprintf(sb, "Старые ключи работать перестанут, не забудь поменять ключи в Outline!")
+
 			if err := b.storage.ApproveOrder(order.ID, keys, order.ExpiresAt.Time); err != nil {
 				return fmt.Errorf("order not approved: %w", err)
 			}
